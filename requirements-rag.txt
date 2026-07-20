@@ -1,0 +1,4 @@
+# Optional heavier local embedding backend for Fibi RAG memory.
+# The default RAG backend uses deterministic local hashing and does not need
+# these packages. Install this only if you want sentence-transformers embeddings.
+sentence-transformers

@@ -1,0 +1,71 @@
+# Fibi v0.30 Release Checklist
+
+- [ ] Run `python -m compileall -q .`
+- [ ] Run `python -m pytest -q`
+- [ ] Run `python app.py --gui-smoke`
+- [ ] Run `python tools/build_windows.py --clean --zip`
+- [ ] Run `python tools/verify_release.py`
+- [ ] Run `python tools/make_checksums.py`
+- [ ] Run `python tools/build_installer.py`
+- [ ] Run `python tests\smoke_v026_beta_feedback.py`
+- [ ] Run `python tests\smoke_v027_browser_helper.py`
+- [ ] Run `python tests\smoke_v028_workflow_recipes.py`
+- [ ] Run `python tests\smoke_v029_command_center.py`
+- [ ] Run `python tests\smoke_v030_memory_review.py`
+- [ ] Confirm `packaging/inno/FibiChubi.iss` exists
+- [ ] Confirm `docs/BETA_TESTER_GUIDE_V025.md` exists
+- [ ] Confirm `docs/BETA_FEEDBACK_FLOW_V026.md` exists
+- [ ] Confirm `docs/ISSUE_TRACKER_V026.md` exists
+- [ ] Confirm `docs/UPDATE_PREP_V026.md` exists
+- [ ] Confirm `docs/BROWSER_HELPER_V027.md` exists
+- [ ] Confirm `docs/WORKFLOW_RECIPES_V028.md` exists
+- [ ] Confirm `docs/BEGINNER_GUIDE_V029.md` exists
+- [ ] Confirm `docs/CAPABILITIES_V029.md` exists
+- [ ] Confirm `docs/COMMANDS_V029.md` exists
+- [ ] Confirm `docs/SAFETY_MODEL_V029.md` exists
+- [ ] Confirm `docs/MEMORY_REVIEW_CENTER_V030.md` exists
+- [ ] Confirm `docs/MEMORY_PRIVACY_V030.md` exists
+- [ ] Complete `docs/GUI_MANUAL_QA_V022.md`
+- [ ] Complete `docs/RELEASE_QA_V023.md`
+- [ ] Complete `docs/RELEASE_NOTES_V024.md`
+- [ ] Complete `docs/RESET_AND_UNINSTALL.md`
+- [ ] Complete `docs/QA_RESULTS_V024.md`
+- [ ] Confirm no secrets in `data/`
+- [ ] Confirm `data/` is not bundled
+- [ ] Confirm `voice_models/` is not bundled by default
+- [ ] Confirm README setup instructions are current
+- [ ] Confirm `/version detailed` reports build metadata
+- [ ] Confirm `/first run status` reports safe defaults
+- [ ] Confirm `/self test` survives
+- [ ] Confirm `/support bundle` exports a safe report
+- [ ] Confirm `/issue new` saves a local issue
+- [ ] Confirm `/feedback new` saves local feedback
+- [ ] Confirm `/support bundle for issue <id>` links masked metadata
+- [ ] Confirm `/release health` reports local beta health
+- [ ] Confirm `/update status` does not use network
+- [ ] Confirm `/debug summary` masks secrets
+- [ ] Confirm `/browser open <url>` requires `browser confirm`
+- [ ] Confirm `/browser summarize` refuses URL-only summaries
+- [ ] Confirm browser history/cookies/passwords and auto-actions are blocked
+- [ ] Confirm `/workflow list` shows built-in recipes
+- [ ] Confirm `/workflow start Safe Release Build` does not auto-run commands
+- [ ] Confirm `/workflow start Website Review / Outreach Research` does not fetch pages
+- [ ] Confirm `/workflow export last` excludes secrets, raw logs, source, and memory DB
+- [ ] Confirm `/help search browser` returns metadata only
+- [ ] Confirm `/capabilities` reports runtime status
+- [ ] Confirm `/permissions` does not change settings
+- [ ] Confirm Command Center opens without running commands
+- [ ] Confirm `/memories` lists visible local memories
+- [ ] Confirm `/memory health` reports RAG memory counts and storage path
+- [ ] Confirm `/memory learning off` pauses new memory writes
+- [ ] Confirm `/memory export` excludes secrets and embeddings
+- [ ] Confirm Memory Review panel opens without model/cloud calls
+- [ ] Confirm `/install status` works
+- [ ] Confirm `/data folder` works
+- [ ] Confirm `/reset instructions` works
+- [ ] Confirm `/health gui` looks healthy
+- [ ] Confirm `/startup diagnostics` reports runtime mode
+- [ ] Confirm `/export error report` excludes memory DB and project source
+- [ ] Confirm `dist/Fibi Chubi/Fibi Chubi.exe` exists
+- [ ] Test executable on a clean Windows user profile
+- [ ] Test portable mode with `portable_mode.txt`

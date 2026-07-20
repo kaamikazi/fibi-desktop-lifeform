@@ -1,0 +1,15 @@
+PyQt6
+requests
+ollama
+edge-tts
+pygame
+Pillow
+emoji
+mss
+pytesseract
+pyautogui
+openai
+python-dotenv
+SpeechRecognition
+numpy
+faiss-cpu

@@ -1,0 +1,53 @@
+{
+  "app_settings": {
+    "start_minimized": false,
+    "minimize_to_tray": true,
+    "always_on_top": true,
+    "click_through_mode": false,
+    "animation_intensity": "normal",
+    "bubble_typing_effect": true,
+    "performance_debug_logs": false,
+    "setup_complete": false,
+    "first_run_skipped": false,
+    "allow_project_checks": true,
+    "require_check_confirmation": true,
+    "allow_low_risk_checks_without_confirmation": false,
+    "check_timeout_seconds": 60,
+    "max_check_output_chars": 12000,
+    "save_full_check_output": true,
+    "auto_suggest_check_after_patch": true,
+    "auto_run_check_after_patch": false,
+    "beta_mode": true
+  },
+  "privacy_settings": {
+    "allow_clipboard_observation": false,
+    "allow_screenshot": false,
+    "allow_cloud_model": false,
+    "allow_nvidia_api": false,
+    "allow_memory_learning": true
+  },
+  "action_settings": {
+    "allow_desktop_actions": true,
+    "allow_open_apps": true,
+    "allow_web_search": true,
+    "allow_volume_control": true,
+    "allow_screenshot": false,
+    "allow_shutdown": false,
+    "allow_unknown_executables": false,
+    "allow_terminal_commands": false,
+    "allow_file_modification": false,
+    "allow_clipboard_actions": false,
+    "allow_autonomous_actions": false
+  },
+  "voice_input_settings": {
+    "allow_voice_input": false
+  },
+  "voice_skin_settings": {
+    "allow_rvc_voice_skin": false,
+    "rvc_enabled": false,
+    "rvc_backend": "disabled"
+  },
+  "tts_settings": {
+    "speak_utility_replies": false
+  }
+}

@@ -1,0 +1,1 @@
+"""Fibi desktop assistant package."""

@@ -1,0 +1,11 @@
+{
+  "latest_version": "0.30.0",
+  "channel": "windows-beta",
+  "release_date": "2026-07-17",
+  "release_notes": "Fibi v0.30 adds Memory Review Center, consent controls, sensitive-memory guard, memory export, and RAG memory health visibility.",
+  "artifact": "Fibi_Chubi_v0.30.0_windows_beta.zip",
+  "download_url": "",
+  "sha256": "",
+  "required": false,
+  "min_supported_version": "0.29.0"
+}

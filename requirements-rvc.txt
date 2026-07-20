@@ -1,0 +1,14 @@
+# Optional heavy dependencies for local RVC voice skins.
+# These are not required for normal Fibi.
+#
+# RVC stacks often work better on Python 3.10 than Python 3.12.
+# If rvc-python install fails, use a local RVC WebUI backend instead.
+
+edge-tts
+pygame
+soundfile
+librosa
+numpy
+torch
+fairseq
+rvc-python

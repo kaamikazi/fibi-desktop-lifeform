@@ -1,0 +1,74 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.token
+*.secret
+credentials.json
+credentials*.json
+secrets.json
+secrets*.json
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+venv/
+.venv/
+.venv-rvc/
+
+# Runtime/private Fibi data
+data/
+voice_cache/
+temp_voice/
+temp_audio/
+*.wav.tmp
+*.mp3.tmp
+
+# Databases and vector indexes
+*.db
+*.sqlite
+*.sqlite3
+*.faiss
+*.index
+*.pth
+
+# Voice/model artifacts
+voice_models/
+
+# Build outputs
+build/
+dist/
+installer_output/
+release_output/
+
+# Node and frontend caches
+node_modules/
+
+# IDE and OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+
+# Repository preparation backups
+.git_empty_backup_*
+.gitignore.pre_build_week_backup*

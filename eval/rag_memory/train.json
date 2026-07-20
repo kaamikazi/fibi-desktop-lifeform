@@ -1,0 +1,32 @@
+[
+  {
+    "query": "what is Fibi supposed to be?",
+    "expected_source_ids": ["mem-project-fibi"],
+    "top_k": 3,
+    "category": "project"
+  },
+  {
+    "query": "how should Fibi answer the user?",
+    "expected_source_ids": ["mem-habit-short-replies"],
+    "top_k": 3,
+    "category": "habit"
+  },
+  {
+    "query": "what privacy goal should Fibi remember?",
+    "expected_source_ids": ["mem-goal-local-first"],
+    "top_k": 3,
+    "category": "goal"
+  },
+  {
+    "query": "what project did Imran mention called KamikazeOS?",
+    "expected_source_ids": ["mem-project-kamikazeos"],
+    "top_k": 3,
+    "category": "project"
+  },
+  {
+    "query": "what long term dream involved land and horses?",
+    "expected_source_ids": ["mem-important-land-horses"],
+    "top_k": 3,
+    "category": "important_moment"
+  }
+]
