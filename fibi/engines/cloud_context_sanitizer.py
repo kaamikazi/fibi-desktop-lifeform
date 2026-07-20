@@ -5,12 +5,14 @@ from __future__ import annotations
 import re
 
 from fibi.engines.types import Observation
+from fibi.providers.types import CloudContextPreview
 
 
 SECRET_PATTERNS = (
     re.compile(r"\b[A-Za-z]:\\[^\s]+"),
     re.compile(r"/(?:home|users|var|etc)/[^\s]+", re.IGNORECASE),
     re.compile(r"\b(?:api[_-]?key|token|secret|password)\b\s*[:=]\s*\S+", re.IGNORECASE),
+    re.compile(r"\bAIza[A-Za-z0-9_-]{20,}\b"),
 )
 
 
@@ -48,3 +50,16 @@ class CloudContextSanitizer:
         if context_level == "none":
             lines = lines[:2]
         return "\n".join(lines) + f"\nUser: {safe_message}\nFibi:"
+
+    @staticmethod
+    def preview(
+        *,
+        approved_memory_summaries: list[str] | None = None,
+        recent_turn_count: int = 0,
+    ) -> CloudContextPreview:
+        """Describe cloud categories without exposing their text."""
+
+        return CloudContextPreview(
+            recent_turn_count=max(0, min(4, int(recent_turn_count))),
+            approved_memory_summary_count=min(2, len(approved_memory_summaries or [])),
+        )

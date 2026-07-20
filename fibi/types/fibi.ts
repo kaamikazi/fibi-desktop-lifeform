@@ -1180,8 +1180,10 @@ export interface PrivacySettings {
   allowOllama: boolean;
   allowMemoryLearning: boolean;
   allowNvidiaApi: boolean;
+  allowGeminiApi: boolean;
   allowCloudModel: boolean;
   cloudContextLevel: "none" | "minimal" | "personality_only" | "memory_hint";
+  cloudContextPreview: boolean;
 }
 
 export interface ExportBundle {
@@ -1209,7 +1211,7 @@ export interface LocalCommandResult {
 }
 
 export interface ModelRouterResult {
-  providerUsed: "local" | "nvidia" | "ollama" | "fallback";
+  providerUsed: "local" | "nvidia" | "gemini" | "ollama" | "fallback";
   modelUsed: string;
   durationMs: number;
   wasCloud: boolean;
@@ -1293,6 +1295,46 @@ export interface CloudProviderConfig {
   maxTokens: number;
   supportsStreaming: boolean;
   privacyLevel: string;
+}
+
+export interface ProviderStatus {
+  provider: string;
+  selected: boolean;
+  configured: boolean;
+  sdkAvailable: boolean;
+  model: string;
+  availability: "online" | "offline" | "unknown" | "not configured" | "SDK unavailable";
+  fallbackEnabled: boolean;
+  streamingEnabled: boolean;
+  contextPreviewEnabled: boolean;
+  lastError: string;
+}
+
+export interface ProviderUsage {
+  promptTokens: number;
+  responseTokens: number;
+  totalTokens: number;
+}
+
+export interface CloudContextPreview {
+  userMessageIncluded: boolean;
+  personalityIncluded: boolean;
+  recentTurnCount: number;
+  approvedMemorySummaryCount: number;
+  rawMemoryDatabaseIncluded: false;
+  browserPrivateDataIncluded: false;
+  projectFilesIncluded: false;
+  logsAndReportsIncluded: false;
+  secretsIncluded: false;
+}
+
+export interface ProviderBenchmarkResult {
+  provider: string;
+  model: string;
+  latencyMs: number;
+  ok: boolean;
+  fallbackUsed: boolean;
+  errorCategory: string;
 }
 
 export interface CancelRequest {

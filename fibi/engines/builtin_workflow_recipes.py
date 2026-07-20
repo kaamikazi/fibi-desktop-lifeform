@@ -129,7 +129,7 @@ def _recipe(
         name=name,
         description=description,
         category=category,
-        version="0.30.0",
+        version="0.30.1",
         steps=steps,
         safety_level=safety_level,
         created_at=now,

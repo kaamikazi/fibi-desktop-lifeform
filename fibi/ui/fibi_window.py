@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
     QCheckBox,
+    QComboBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -537,6 +538,7 @@ class FibiSettingsDialog(QDialog):
             ("allow_ollama", "Ollama enabled", privacy.allow_ollama),
             ("allow_cloud_model", "cloud enabled", privacy.allow_cloud_model),
             ("allow_nvidia_api", "NVIDIA/API provider enabled", privacy.allow_nvidia_api),
+            ("allow_gemini_api", "Gemini API enabled", privacy.allow_gemini_api),
         ])
         add_tab("Voice", [
             ("allow_tts", "TTS voice", privacy.allow_tts),
@@ -551,7 +553,20 @@ class FibiSettingsDialog(QDialog):
             ("performance_debug_logs", "performance debug logs", settings.performance_debug_logs),
         ])
 
-        self.cloud_label = QLabel(f"Cloud key: {self._key_status()}")
+        provider_row = QHBoxLayout()
+        provider_row.addWidget(QLabel("Language provider"))
+        self.provider_combo = QComboBox()
+        self.provider_combo.addItem("LOCAL - Ollama", "ollama")
+        self.provider_combo.addItem("CLOUD - Gemini", "gemini")
+        selected = self.core.model_router.selected_provider()
+        self.provider_combo.setCurrentIndex(1 if selected == "gemini" else 0)
+        provider_row.addWidget(self.provider_combo)
+        layout.addLayout(provider_row)
+
+        self.cloud_label = QLabel(
+            f"Gemini API key: {self._key_status()}\n{self.core.get_provider_status()}"
+        )
+        self.cloud_label.setWordWrap(True)
         layout.addWidget(self.cloud_label)
 
         buttons = QHBoxLayout()
@@ -561,6 +576,12 @@ class FibiSettingsDialog(QDialog):
         setup = QPushButton("first-run setup")
         setup.clicked.connect(self._open_setup)
         buttons.addWidget(setup)
+        provider_test = QPushButton("test provider")
+        provider_test.clicked.connect(self._test_provider)
+        buttons.addWidget(provider_test)
+        privacy = QPushButton("cloud privacy")
+        privacy.clicked.connect(self._show_provider_privacy)
+        buttons.addWidget(privacy)
         layout.addLayout(buttons)
 
         self.setStyleSheet("QDialog { background: #fff7fc; } QCheckBox, QLabel { color: #39243f; font: 9pt 'Segoe UI'; }")
@@ -568,8 +589,7 @@ class FibiSettingsDialog(QDialog):
     @staticmethod
     def _key_status() -> str:
         import os
-        key = os.getenv("NVIDIA_API_KEY") or os.getenv("CLOUD_API_KEY") or ""
-        return "not set" if not key else f"set ending in ****{key[-4:]}"
+        return "configured" if os.getenv("GEMINI_API_KEY", "").strip() else "not configured"
 
     def _save(self) -> None:
         self.core.update_settings(
@@ -597,14 +617,30 @@ class FibiSettingsDialog(QDialog):
             allow_ollama=self.checks["allow_ollama"].isChecked(),
             allow_cloud_model=self.checks["allow_cloud_model"].isChecked(),
             allow_nvidia_api=self.checks["allow_nvidia_api"].isChecked(),
+            allow_gemini_api=self.checks["allow_gemini_api"].isChecked(),
             allow_tts=self.checks["allow_tts"].isChecked(),
             allow_sounds=self.checks["allow_sounds"].isChecked(),
         )
+        selected_provider = str(self.provider_combo.currentData())
+        self.core.handle_local_command(f"/provider use {selected_provider}")
         if self.checks["quiet_mode"].isChecked():
             self.core.boundary.enable_quiet(None, reason="settings")
         else:
             self.core.boundary.disable_quiet()
         self.accept()
+
+    def _test_provider(self) -> None:
+        parent = self.parent()
+        if parent is not None and hasattr(parent, "_ask_fibi"):
+            self.accept()
+            parent._ask_fibi("/provider test")
+            return
+        self.cloud_label.setText("Run /provider test from Fibi chat.")
+
+    def _show_provider_privacy(self) -> None:
+        result = self.core.handle_local_command("/provider privacy")
+        text = result.response.display_text if result.response else "Cloud privacy details unavailable."
+        self.cloud_label.setText(text)
 
     def _open_setup(self) -> None:
         FibiFirstRunDialog(self.core, self).exec()
@@ -647,6 +683,7 @@ class FibiFirstRunDialog(QDialog):
             allow_memory_learning=self.memory.isChecked(),
             allow_cloud_model=False,
             allow_nvidia_api=False,
+            allow_gemini_api=False,
             allow_clipboard_observation=False,
         )
         self.core.update_voice_settings(allow_voice_input=False)

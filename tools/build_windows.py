@@ -26,6 +26,7 @@ SMOKE_TESTS = [
     "tests/smoke_v028_workflow_recipes.py",
     "tests/smoke_v029_command_center.py",
     "tests/smoke_v030_memory_review.py",
+    "tests/smoke_v0301_gemini_provider.py",
 ]
 
 
@@ -93,11 +94,11 @@ def zip_release() -> Path:
 
 
 def release_zip_path() -> Path:
-    return DIST_DIR / "Fibi_Chubi_v0.30.0_windows_beta.zip"
+    return DIST_DIR / "Fibi_Chubi_v0.30.1_windows_beta.zip"
 
 
 def release_manifest_path() -> Path:
-    return DIST_DIR / "release_manifest_v0.30.0.json"
+    return DIST_DIR / "release_manifest_v0.30.1.json"
 
 
 def _sha256(path: Path) -> str:
@@ -115,7 +116,7 @@ def write_release_manifest(zip_path: Path | None = None, installer_path: Path | 
 
     exe = RELEASE_DIR / "Fibi Chubi.exe"
     zip_path = zip_path or release_zip_path()
-    installer_path = installer_path or (DIST_DIR / "installers" / "Fibi_Chubi_Setup_v0.30.0.exe")
+    installer_path = installer_path or (DIST_DIR / "installers" / "Fibi_Chubi_Setup_v0.30.1.exe")
     docs = [
         "README.md",
         "docs/RELEASE_NOTES_V024.md",
@@ -132,10 +133,12 @@ def write_release_manifest(zip_path: Path | None = None, installer_path: Path | 
         "docs/SAFETY_MODEL_V029.md",
         "docs/MEMORY_REVIEW_CENTER_V030.md",
         "docs/MEMORY_PRIVACY_V030.md",
+        "docs/GEMINI_PROVIDER_V0301.md",
+        "docs/CLOUD_CONTEXT_PRIVACY_V0301.md",
         "packaging/installer_notes.md",
     ]
     manifest = {
-        "app_version": "0.30.0",
+        "app_version": "0.30.1",
         "build_date": datetime.now().astimezone().isoformat(timespec="seconds"),
         "zip_path": str(zip_path),
         "installer_path": str(installer_path) if installer_path.exists() else "",

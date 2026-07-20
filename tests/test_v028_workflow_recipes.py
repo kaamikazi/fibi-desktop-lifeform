@@ -156,6 +156,6 @@ def test_workflow_completion_creates_short_rag_memory() -> None:
 
 
 def test_packaged_v028_paths() -> None:
-    assert release_zip_path().name == "Fibi_Chubi_v0.30.0_windows_beta.zip"
+    assert release_zip_path().name == "Fibi_Chubi_v0.30.1_windows_beta.zip"
 
 

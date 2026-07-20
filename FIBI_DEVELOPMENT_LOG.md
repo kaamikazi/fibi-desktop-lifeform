@@ -2,6 +2,21 @@
 
 This document records the work completed on Fibi so far.
 
+## 30.1. Optional Gemini Development Provider
+
+- Updated patch version to `0.30.1`.
+- Added a lazy `google-genai` provider with session-only model discovery,
+  stable Flash preference, timeout control, optional streaming, and normalized
+  safe errors.
+- Added explicit provider selection and dedicated Gemini privacy permission.
+- Added category-level cloud context preview and approved-summary-only memory
+  context.
+- Added visible one-attempt Ollama fallback without moving identity, memory,
+  permissions, workflows, or actions into the provider.
+- Added provider commands, settings controls, capability metadata, secret
+  masking, safe support-bundle status, mocked tests, and a manual one-call tool.
+- Added Gemini and cloud-context privacy documentation.
+
 ## 30. Memory Review Center And Consent Controls
 
 - Updated app/build version to `0.30.0`.

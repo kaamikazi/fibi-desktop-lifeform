@@ -76,5 +76,8 @@ class PrivacySettingsEngine:
         clipboard = "off" if not self.settings.allow_clipboard_observation else "on"
         ollama = "on" if self.settings.allow_ollama else "off"
         journal = "on" if self.settings.allow_journal else "off"
-        cloud = "on" if self.settings.allow_cloud_model and self.settings.allow_nvidia_api else "off"
+        cloud = "on" if (
+            self.settings.allow_cloud_model
+            and (self.settings.allow_nvidia_api or self.settings.allow_gemini_api)
+        ) else "off"
         return f"local only. clipboard {clipboard}. journal {journal}. ollama {ollama}. cloud {cloud}."

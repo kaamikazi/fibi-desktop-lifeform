@@ -56,7 +56,7 @@ def test_core_version_health_and_error_recording() -> None:
     with tempfile.TemporaryDirectory() as temp:
         os.environ["FIBI_DATA_DIR"] = str(Path(temp) / "data")
         core, _, _ = make_core(Path(temp) / "core", [], [])
-        assert "Fibi Chubi v0.30.0" in core.respond("/version").display_text
+        assert "Fibi Chubi v0.30.1" in core.respond("/version").display_text
         health = core.respond("/health gui").display_text
         assert "uptime" in health
         core.record_ui_error("test", RuntimeError("squeak"))

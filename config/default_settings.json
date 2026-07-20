@@ -24,6 +24,8 @@
     "allow_screenshot": false,
     "allow_cloud_model": false,
     "allow_nvidia_api": false,
+    "allow_gemini_api": false,
+    "cloud_context_preview": true,
     "allow_memory_learning": true
   },
   "action_settings": {

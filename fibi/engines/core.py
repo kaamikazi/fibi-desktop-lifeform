@@ -975,7 +975,8 @@ class FibiCore:
             browser_helper=True,
             voice_input=self.voice_settings.settings.allow_voice_input,
             rvc_voice_skin=self.voice_skin_settings.settings.rvc_enabled,
-            cloud=self.privacy.settings.allow_cloud_model or self.privacy.settings.allow_nvidia_api,
+            cloud=self.privacy.settings.allow_cloud_model
+            and (self.privacy.settings.allow_nvidia_api or self.privacy.settings.allow_gemini_api),
             memory_learning=self.privacy.settings.allow_memory_learning,
             beta_mode=self.app_settings.settings.beta_mode,
         )
@@ -997,6 +998,10 @@ class FibiCore:
         consent = self.memory_consent.summary_line()
         return {
             "chat": {"enabled": True, "status_summary": self.get_model_status()},
+            "gemini_provider": {
+                "enabled": self.model_router.gemini.is_configured(),
+                "status_summary": self.get_provider_status(),
+            },
             "memory": {"enabled": self.memory_consent.state.memory_learning_enabled, "status_summary": consent},
             "memory_review": {"enabled": True, "status_summary": memory_health},
             "memory_consent": {"enabled": True, "status_summary": consent},
@@ -1058,8 +1063,24 @@ class FibiCore:
         LOGGER.exception("gui_event_error", extra={"where": where})
 
     def get_model_status(self) -> str:
-        cloud = "cloud on" if self.privacy.settings.allow_cloud_model and self.privacy.settings.allow_nvidia_api else "cloud off"
-        return f"model {self.model_router.mode}. {cloud}. {self.health.status_line()}"
+        selected = self.model_router.selected_provider()
+        cloud = "cloud on" if (
+            self.privacy.settings.allow_cloud_model
+            and (self.privacy.settings.allow_nvidia_api or self.privacy.settings.allow_gemini_api)
+        ) else "cloud off"
+        return f"model {selected}. {cloud}. {self.health.status_line()}"
+
+    def get_provider_status(self) -> str:
+        selected = self.model_router.selected_provider()
+        status = self.model_router.gemini.status(selected=selected == "gemini")
+        configured = "configured" if status.configured else "not configured"
+        fallback = "Ollama fallback on" if status.fallback_enabled else "Ollama fallback off"
+        streaming = "streaming on" if status.streaming_enabled else "streaming off"
+        preview = "context preview on" if self.privacy.settings.cloud_context_preview else "context preview off"
+        return (
+            f"provider: {selected}. Gemini {configured}. model: {status.model}. "
+            f"{fallback}. {streaming}. {preview}. status: {status.availability}."
+        )
 
     def get_privacy_status(self) -> str:
         return self.privacy.summary_line()
@@ -1287,9 +1308,146 @@ class FibiCore:
         cleaned = re.sub(r"[.!?]+$", "", user_message.strip().lower())
         return cleaned in FAST_GREETINGS
 
+    def _maybe_handle_provider_prompt(self, lowered: str) -> LocalCommandResult:
+        mapping = {
+            "use gemini": "/provider use gemini",
+            "switch to gemini": "/provider use gemini",
+            "switch back to local": "/provider use ollama",
+            "use ollama": "/provider use ollama",
+            "which model are you using": "/provider status",
+            "which model are you using?": "/provider status",
+            "test gemini": "/provider test",
+            "is gemini available": "/provider status",
+            "is gemini available?": "/provider status",
+            "what will be sent to the cloud": "/provider context",
+            "what will be sent to the cloud?": "/provider context",
+            "use the fastest available gemini model": "/provider use gemini",
+        }
+        command = mapping.get(lowered)
+        return self._handle_provider_command(command, command) if command else LocalCommandResult(False)
+
+    def _handle_provider_command(self, text: str, lowered: str) -> LocalCommandResult:
+        if not lowered.startswith("/provider"):
+            return LocalCommandResult(False)
+        if lowered in {"/provider", "/provider status"}:
+            return self._local_response(self.get_provider_status(), "thinking", tts_priority="silent")
+        if lowered == "/provider list":
+            return self._local_response(
+                "providers: LOCAL - Ollama (default); CLOUD - Gemini (optional, explicit opt-in).",
+                "thinking",
+                tts_priority="silent",
+            )
+        if lowered == "/provider use ollama":
+            self.model_router.set_mode("ollama")
+            self.privacy.update(allow_ollama=True, allow_cloud_model=False, allow_gemini_api=False)
+            return self._local_response("back to LOCAL - Ollama. cloud off.", "happy", tts_priority="silent")
+        if lowered == "/provider use gemini":
+            if not self.model_router.gemini.is_configured():
+                self.privacy.update(allow_gemini_api=False)
+                return self._local_response(
+                    "Gemini is not configured. add GEMINI_API_KEY to your local ignored .env, then restart. never paste it into chat.",
+                    "sleepy",
+                    tts_priority="silent",
+                )
+            if not self.model_router.gemini.sdk_available():
+                self.privacy.update(allow_gemini_api=False)
+                return self._local_response(
+                    "Gemini SDK is unavailable. install project requirements locally first.",
+                    "sleepy",
+                    tts_priority="silent",
+                )
+            self.model_router.set_mode("gemini")
+            self.privacy.update(
+                allow_cloud_model=True,
+                allow_gemini_api=True,
+                cloud_context_preview=self.model_router.gemini.config.context_preview,
+            )
+            return self._local_response(
+                "CLOUD - Gemini selected.\n" + self._provider_context_preview(),
+                "thinking",
+                tts_priority="silent",
+            )
+        if lowered == "/provider models":
+            if not self.model_router.gemini.is_configured():
+                return self._local_response("Gemini is not configured. no model list requested.", "sleepy", tts_priority="silent")
+            try:
+                models = self.model_router.gemini.list_models(refresh=True)
+            except Exception as error:
+                message = getattr(error, "safe_message", "Gemini model discovery failed")
+                return self._local_response(message + ".", "sleepy", tts_priority="silent")
+            line = "Gemini text models: " + ", ".join(models[:12]) if models else "no compatible Gemini text models found."
+            return self._local_response(line, "thinking", tts_priority="silent")
+        if lowered == "/provider privacy":
+            return self._local_response(
+                "Gemini receives one sanitized prompt only. raw databases, browser secrets, project files, logs, reports, and keys stay local.",
+                "sleepy",
+                tts_priority="silent",
+            )
+        if lowered == "/provider context":
+            return self._local_response(self._provider_context_preview(), "thinking", tts_priority="silent")
+        if lowered == "/provider context preview on":
+            self.privacy.update(cloud_context_preview=True)
+            return self._local_response("cloud context preview on.", "thinking", tts_priority="silent")
+        if lowered == "/provider context preview off":
+            self.privacy.update(cloud_context_preview=False)
+            return self._local_response("cloud context preview off.", "sleepy", tts_priority="silent")
+        if lowered == "/provider test":
+            if self.model_router.mode != "gemini" or not self.privacy.settings.allow_gemini_api:
+                return self._local_response("select Gemini first with /provider use gemini.", "sleepy", tts_priority="silent")
+            result = self.model_router.gemini.test_connection()
+            if result.error:
+                return self._local_response(f"Gemini test failed: {result.error}.", "sleepy", tts_priority="silent")
+            return self._local_response(
+                f"Gemini test ok. model {result.model}. {result.duration_ms:.0f}ms.",
+                "happy",
+                tts_priority="silent",
+            )
+        if lowered == "/provider benchmark":
+            if self.model_router.mode != "gemini" or not self.privacy.settings.allow_gemini_api:
+                return self._local_response("select Gemini first. benchmark stays manual.", "sleepy", tts_priority="silent")
+            gemini = self.model_router.gemini.benchmark()
+            ollama = self.model.generate("Reply with OLLAMA_PROVIDER_OK.")
+            ollama_ok = bool(ollama.raw_text.strip() and not ollama.error)
+            return self._local_response(
+                "tiny neutral benchmark, not science: "
+                f"Gemini {gemini.latency_ms:.0f}ms {'ok' if gemini.ok else 'failed'}; "
+                f"Ollama {ollama.duration_seconds * 1000:.0f}ms {'ok' if ollama_ok else 'failed'}.",
+                "thinking",
+                tts_priority="silent",
+            )
+        return self._local_response("provider command? try /provider status.", "thinking", tts_priority="silent")
+
+    def _provider_context_preview(self) -> str:
+        summaries = self._approved_cloud_memory_hints("")
+        return self.model_router.context_preview(summaries).format()
+
+    def _approved_cloud_memory_hints(self, user_message: str) -> list[str]:
+        if self.privacy.settings.cloud_context_level != "memory_hint":
+            return []
+        try:
+            results = self.memory_review.search_memories(user_message or "pinned preferences", top_k=6)
+        except Exception:
+            LOGGER.exception("cloud_memory_summary_selection_failed")
+            return []
+        summaries: list[str] = []
+        for result in results:
+            item = result.item
+            if not item.approved or item.sensitive_flag or item.archived:
+                continue
+            summary = item.summary.strip()
+            if summary:
+                summaries.append(summary)
+            if len(summaries) >= 2:
+                break
+        return summaries
+
     def _handle_local_command(self, user_message: str) -> LocalCommandResult:
         text = user_message.strip()
         lowered = text.lower()
+
+        provider_prompt = self._maybe_handle_provider_prompt(lowered)
+        if provider_prompt.handled:
+            return provider_prompt
 
         if lowered == "confirm project" and self._pending_project_path:
             return self._handle_project_command(text, lowered)
@@ -2757,6 +2915,9 @@ class FibiCore:
         lowered = text.lower().strip()
         parts = text.split(maxsplit=2)
 
+        provider_command = self._handle_provider_command(text, lowered)
+        if provider_command.handled:
+            return provider_command
         help_command = self._handle_help_command(text, lowered)
         if help_command.handled:
             return help_command
@@ -2929,9 +3090,7 @@ class FibiCore:
         if lowered == "/assets":
             return self._local_response(self.asset_health.check().message, "thinking")
         if lowered == "/model status":
-            provider = self.model_router.mode
-            cloud = "cloud on" if self.privacy.settings.allow_cloud_model and self.privacy.settings.allow_nvidia_api else "cloud off"
-            return self._local_response(f"model {provider}. {cloud}. {self.health.status_line()}", "thinking")
+            return self._local_response(self.get_model_status(), "thinking")
         if lowered == "/cancel" or lowered == "/stop":
             self._cancel_requested = True
             self.life.set_thinking(False)
@@ -3341,7 +3500,7 @@ class FibiCore:
         decision = self.route_decisions.decide(
             user_message,
             fast_category=classified,
-            provider_allowed=self.health.provider_allowed("ollama"),
+            provider_allowed=self.health.provider_allowed(self.model_router.selected_provider()),
         )
         self._log_route_decision(decision)
         if self._cancel_requested:
@@ -3360,7 +3519,7 @@ class FibiCore:
             self.life.mood,
             self.privacy.settings,
             observation=observation,
-            memory_hints=memory_hints,
+            memory_hints=self._approved_cloud_memory_hints(user_message),
             fast_category=classified.category,
             local_brain_confidence=getattr(self, "_active_local_brain_confidence", "n/a"),
             local_brain_handled=getattr(self, "_active_local_brain_handled", None),
@@ -3378,7 +3537,7 @@ class FibiCore:
             not routed.fallback_used and not routed.error,
             routed.error,
         )
-        print(f"RAW AI REPLY: {routed.reply_text}")
+        print(f"RAW AI REPLY: {'[cloud response omitted]' if routed.was_cloud else routed.reply_text}")
 
         display, tagged_mood = self._clean_model_reply(routed.reply_text)
         if is_effectively_empty(display) and not routed.error and routed.provider_used == "ollama":

@@ -26,6 +26,7 @@ COMMAND_ROUTES = {
     "/memories": "local_command",
     "/model": "local_command",
     "/cloud": "local_command",
+    "/provider": "local_command",
     "/status": "local_command",
 }
 

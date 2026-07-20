@@ -11,3 +11,4 @@ pyautogui
 openai
 python-dotenv
 SpeechRecognition
+google-genai>=1,<2

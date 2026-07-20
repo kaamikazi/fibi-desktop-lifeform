@@ -5,6 +5,7 @@ Fibi is local-first and permission-first.
 ## Defaults
 
 - Cloud model access is off by default.
+- Gemini requires explicit provider selection and a dedicated local permission.
 - Clipboard observation is off by default.
 - Screenshot actions are off by default.
 - Voice input is off by default.
@@ -24,6 +25,7 @@ Fibi refuses:
 - arbitrary terminal commands
 - destructive file operations
 - surprise uploads
+- sending raw memory databases, project trees, browser secrets, logs, or credentials to a provider
 - auto-applying patches
 - exporting memory databases or full project source in support bundles
 - storing passwords, API keys, tokens, private keys, recovery codes, raw private
@@ -54,6 +56,8 @@ Confirmation is required for risky areas:
 /permissions
 /memory safety
 /memory consent
+/provider privacy
+/provider context
 ```
 
 These commands are read-only. They do not change settings.

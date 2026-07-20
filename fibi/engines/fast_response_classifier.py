@@ -100,7 +100,7 @@ class FastResponseClassifier:
                 return FastResponseCategory("privacy_command", 1.0, False)
             if command_text.startswith(("/memory", "/memories", "/forget", "/dreams", "/journal", "/summary", "/privacy", "/reset")):
                 return FastResponseCategory("memory_command", 1.0, False)
-            if command_text.startswith(("/model", "/cloud", "/perf", "/cancel", "/stop")):
+            if command_text.startswith(("/model", "/cloud", "/provider", "/perf", "/cancel", "/stop")):
                 return FastResponseCategory("model_command", 1.0, False)
             return FastResponseCategory("privacy_command" if "privacy" in command_text else "memory_command", 0.9, False)
         if greeting_text in GREETINGS:

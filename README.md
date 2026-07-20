@@ -52,10 +52,18 @@ The goal is not to claim consciousness or autonomy. The goal is a more durable d
 - Permission and safety explainers make boundaries visible.
 - Local commands handle status, safety, memory, workflows, browser help, project checks, voice, and release diagnostics.
 
+### Replaceable Language Providers
+
+- Ollama remains the default local language provider.
+- v0.30.1 adds optional, explicit-opt-in Gemini support through Google's current `google-genai` SDK.
+- Provider changes do not move identity, memory, consent, permissions, workflows, actions, or safety into the model.
+- Cloud context is minimized and previewable before use.
+- Gemini failures can visibly fall back once to local Ollama.
+
 ### Local Beta Packaging
 
 - Windows portable build tooling exists.
-- A verified portable ZIP and executable were produced locally for v0.30.
+- A verified portable ZIP and executable were produced locally for v0.30.1.
 - Generated binaries and `dist/` are intentionally not committed to this source repository.
 - Inno Setup was not installed in the verified environment, so no installer EXE was produced.
 
@@ -106,6 +114,8 @@ Read more:
 - [Memory Privacy](docs/MEMORY_PRIVACY_V030.md)
 - [RAG Developer Guide](docs/RAG_DEVELOPER_GUIDE.md)
 - [RAG Migration Guide](docs/RAG_MIGRATION_GUIDE.md)
+- [Optional Gemini Provider](docs/GEMINI_PROVIDER_V0301.md)
+- [Cloud Context Privacy](docs/CLOUD_CONTEXT_PRIVACY_V0301.md)
 
 ## Safety Model
 
@@ -194,9 +204,40 @@ python -m pip install -r requirements-rvc.txt
 
 Normal Fibi does not require RVC.
 
+### Optional Gemini Development Provider
+
+Gemini is not enabled by default. Put the key manually in the ignored `.env`
+file; never commit it or paste it into chat:
+
+```dotenv
+GEMINI_API_KEY=YOUR_GEMINI_API_KEY_HERE
+FIBI_PROVIDER=ollama
+FIBI_GEMINI_MODEL=
+FIBI_GEMINI_TIMEOUT_SECONDS=25
+FIBI_GEMINI_FALLBACK_TO_OLLAMA=true
+FIBI_GEMINI_STREAMING=false
+FIBI_CLOUD_CONTEXT_PREVIEW=true
+```
+
+Restart Fibi, then select the provider explicitly:
+
+```text
+/provider use gemini
+/provider status
+/provider context
+```
+
+Use `/provider use ollama` to return to local mode. An empty model setting uses
+safe session-only model discovery and prefers a stable Flash-class
+text-generation model available to the configured key.
+
+Google AI subscriptions and Gemini API billing/quota may be separate. Fibi does
+not enable billing or change billing settings. Review Google's current API
+policies and limits before use.
+
 ### B. Portable Windows Beta
 
-The verified v0.30 portable ZIP and executable were generated locally by the release tooling:
+The verified v0.30.1 portable ZIP and executable were generated locally by the release tooling:
 
 ```powershell
 python tools\build_windows.py --clean --zip
@@ -225,18 +266,20 @@ Starter commands:
 /workflow start <name>
 /browser safety
 /health gui
+/provider status
+/provider privacy
 ```
 
 For the larger command list, see [docs/COMMANDS_V029.md](docs/COMMANDS_V029.md).
 
 ## Testing and Verification
 
-Verified v0.30 results:
+Verified v0.30.1 results:
 
-- 129 tests passed
+- 156 tests passed
 - 3 warnings
 - GUI smoke passed
-- v0.29 and v0.30 smoke tests passed
+- v0.29, v0.30, and mocked v0.30.1 provider smoke tests passed
 - Windows build verification passed
 - checksum generation passed
 - ZIP privacy scan passed
@@ -296,6 +339,7 @@ The public Git repository was initialized from the completed v0.30 working tree 
 - No installer EXE in the current verified environment.
 - Optional voice and RVC setup can be heavyweight.
 - Local model quality and speed depend on hardware.
+- Optional Gemini mode requires network access, a user-managed API key, and available API quota.
 - Legacy memory notebook remains for compatibility.
 - Complete cross-model identity-continuity evaluation remains future research.
 

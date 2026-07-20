@@ -82,7 +82,7 @@ def test_release_health_update_manifest_and_version_compare() -> None:
         manifest.write_text(
             json.dumps(
                 {
-                    "latest_version": "0.30.0",
+                    "latest_version": "0.30.1",
                     "channel": "beta",
                     "release_date": "2026-07-08",
                     "release_notes": "tiny update prep.",
@@ -95,15 +95,15 @@ def test_release_health_update_manifest_and_version_compare() -> None:
             encoding="utf-8",
         )
         engine = UpdateManifestEngine(manifest)
-        assert "0.30.0" in engine.status_line()
+        assert "0.30.1" in engine.status_line()
         assert "tiny update prep" in engine.notes_line()
         assert "no auto-download" in engine.safety_line()
-        assert compare_versions("0.26.0", "0.30.0").relation == "older"
+        assert compare_versions("0.26.0", "0.30.1").relation == "older"
 
         core, _, _ = make_core(root / "core", [], [])
         core.updates = engine
         core.release_health.updates = engine
-        assert "release health v0.30.0" in core.respond("/release health").display_text
+        assert "release health v0.30.1" in core.respond("/release health").display_text
         assert "no download" in core.respond("/update status").display_text
 
 

@@ -1,4 +1,4 @@
-# PyInstaller spec for Fibi Chubi v0.30.
+# PyInstaller spec for Fibi Chubi v0.30.1.
 #
 # Build from the project root:
 #   python -m PyInstaller packaging/pyinstaller_fibi.spec --noconfirm
@@ -34,6 +34,8 @@ datas += include_if_exists(ROOT / "docs" / "COMMANDS_V029.md", "docs")
 datas += include_if_exists(ROOT / "docs" / "SAFETY_MODEL_V029.md", "docs")
 datas += include_if_exists(ROOT / "docs" / "MEMORY_REVIEW_CENTER_V030.md", "docs")
 datas += include_if_exists(ROOT / "docs" / "MEMORY_PRIVACY_V030.md", "docs")
+datas += include_if_exists(ROOT / "docs" / "GEMINI_PROVIDER_V0301.md", "docs")
+datas += include_if_exists(ROOT / "docs" / "CLOUD_CONTEXT_PRIVACY_V0301.md", "docs")
 datas += include_if_exists(ROOT / "updates", "updates")
 datas += include_if_exists(ROOT / "packaging" / "README.md", "packaging")
 datas += include_if_exists(ROOT / "packaging" / "installer_notes.md", "packaging")
@@ -48,6 +50,8 @@ a = Analysis(
         "PyQt6.QtCore",
         "PyQt6.QtGui",
         "PyQt6.QtWidgets",
+        "google.genai",
+        "google.genai.types",
     ],
     hookspath=[],
     hooksconfig={},

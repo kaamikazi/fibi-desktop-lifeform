@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -43,6 +44,15 @@ class ErrorReportEngine:
             bundle.writestr("health_snapshot.txt", mask_secrets(health_snapshot or "no health snapshot"))
             bundle.writestr("last_route_decision.txt", mask_secrets(last_route_decision or "unknown"))
             bundle.writestr("recent_errors.txt", mask_secrets("\n".join(recent_errors[-30:]) or "none"))
+            bundle.writestr(
+                "provider_status.json",
+                json.dumps(
+                    {
+                        "GEMINI_API_KEY_CONFIGURED": bool(os.getenv("GEMINI_API_KEY", "").strip()),
+                    },
+                    indent=2,
+                ),
+            )
             if issue_metadata:
                 bundle.writestr("issue_metadata.json", mask_secrets(json.dumps(issue_metadata, indent=2)))
             if feedback_metadata:

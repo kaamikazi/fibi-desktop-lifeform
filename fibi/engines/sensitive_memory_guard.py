@@ -11,7 +11,7 @@ from fibi.engines.types import MemoryRiskResult
 class SensitiveMemoryGuard:
     """Decide whether a memory is safe to keep, needs approval, or is blocked."""
 
-    API_KEY = re.compile(r"\b(?:sk-|pk_)[A-Za-z0-9_\-]{20,}\b")
+    API_KEY = re.compile(r"\b(?:(?:sk-|pk_)[A-Za-z0-9_\-]{20,}|AIza[A-Za-z0-9_-]{20,})\b")
     TOKEN_WORD = re.compile(r"(?i)\b(api[_ -]?key|token|secret|password|passwd|private key|recovery code)\b")
     CARD_NUMBER = re.compile(r"\b(?:\d[ -]*?){13,19}\b")
     GOV_ID = re.compile(r"(?i)\b(ssn|social security|passport number|national id|nid|driver'?s license)\b")

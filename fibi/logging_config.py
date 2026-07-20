@@ -24,6 +24,7 @@ SECRET_PATTERNS = (
     re.compile(r"(?i)(api[_-]?key|token|secret|password)\s*[:=]\s*([^\s,;]+)"),
     re.compile(r"(?i)(authorization\s*[:=]\s*bearer\s+)([^\s,;]+)"),
     re.compile(r"\bsk-[A-Za-z0-9_-]{12,}\b"),
+    re.compile(r"\bAIza[A-Za-z0-9_-]{20,}\b"),
 )
 
 
@@ -106,6 +107,8 @@ def mask_secrets(text: str) -> str:
     for pattern in SECRET_PATTERNS:
         if pattern.pattern.startswith("\\bsk-"):
             masked = pattern.sub("sk-[secret]", masked)
+        elif pattern.pattern.startswith("\\bAIza"):
+            masked = pattern.sub("[Gemini key secret]", masked)
         else:
             masked = pattern.sub(lambda match: f"{match.group(1)}=[secret]", masked)
     return masked

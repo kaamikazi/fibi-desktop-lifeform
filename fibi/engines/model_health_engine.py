@@ -62,7 +62,7 @@ class ModelHealthEngine:
         if provider == "ollama":
             self.state.ollama_available = ok
             self.state.last_ollama_latency_ms = latency_ms
-        elif provider in {"nvidia", "cloud"}:
+        elif provider in {"nvidia", "cloud", "gemini"}:
             self.state.cloud_available = ok
             self.state.last_cloud_latency_ms = latency_ms
         if ok:

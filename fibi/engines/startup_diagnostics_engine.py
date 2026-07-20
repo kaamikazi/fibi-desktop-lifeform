@@ -40,7 +40,7 @@ class StartupDiagnostics:
 class StartupDiagnosticsEngine:
     """Check required and optional desktop runtime pieces without crashing."""
 
-    OPTIONAL_IMPORTS = ("edge_tts", "pygame", "ollama", "emoji", "speech_recognition")
+    OPTIONAL_IMPORTS = ("edge_tts", "pygame", "ollama", "emoji", "speech_recognition", "google.genai")
 
     def __init__(self, report_path: Path | None = None) -> None:
         self.report_path = Path(report_path) if report_path is not None else data_path("startup_diagnostics.json")

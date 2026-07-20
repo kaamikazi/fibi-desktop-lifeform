@@ -13,3 +13,4 @@ python-dotenv
 SpeechRecognition
 numpy
 faiss-cpu
+google-genai>=1,<2

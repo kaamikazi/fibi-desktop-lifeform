@@ -60,7 +60,7 @@ def run() -> None:
         with tempfile.TemporaryDirectory() as temp:
             os.environ["FIBI_DATA_DIR"] = str(Path(temp) / "data")
             core, _, _ = make_core(Path(temp) / "core", [], [])
-            assert "Fibi Chubi v0.30.0" in core.respond("/version detailed").display_text
+            assert "Fibi Chubi v0.30.1" in core.respond("/version detailed").display_text
     finally:
         if original_frozen is None:
             if hasattr(sys, "frozen"):

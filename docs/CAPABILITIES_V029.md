@@ -36,6 +36,7 @@ Capabilities include:
 - Release Health
 - Update Manifest
 - Packaging/Build Tools
+- Gemini Provider
 
 Each capability records:
 
@@ -55,3 +56,7 @@ This registry is discovery metadata. It does not execute commands.
 
 v0.30 adds dedicated memory review and consent capability cards. See
 `docs/MEMORY_REVIEW_CENTER_V030.md` and `docs/MEMORY_PRIVACY_V030.md`.
+
+v0.30.1 adds an optional Gemini Provider capability card. The provider is a
+replaceable language cortex only; it cannot own memory, permissions, workflows,
+browser access, or actions. See `docs/GEMINI_PROVIDER_V0301.md`.

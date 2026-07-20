@@ -11,6 +11,8 @@ from fibi.engines.model_engine import ModelEngine
 from fibi.engines.nvidia_model_engine import NvidiaModelEngine
 from fibi.engines.openai_compatible_provider import OpenAICompatibleProvider
 from fibi.engines.types import ModelRouterResult, Observation, PrivacySettings
+from fibi.providers.gemini_provider import GeminiProvider
+from fibi.providers.types import CloudContextPreview
 from fibi.settings import CLOUD_PROVIDER
 
 ROUTER_FALLBACKS = [
@@ -30,17 +32,32 @@ class ModelRouter:
         ollama: ModelEngine | None = None,
         nvidia: NvidiaModelEngine | None = None,
         generic_cloud: OpenAICompatibleProvider | None = None,
+        gemini: GeminiProvider | None = None,
         sanitizer: CloudContextSanitizer | None = None,
     ) -> None:
         self.ollama = ollama or ModelEngine()
         self.nvidia = nvidia or NvidiaModelEngine()
         self.generic_cloud = generic_cloud or OpenAICompatibleProvider()
+        self.gemini = gemini or GeminiProvider()
         self.sanitizer = sanitizer or CloudContextSanitizer()
-        self.mode = "auto"
+        configured_mode = self.gemini.config.selected_provider
+        self.mode = configured_mode if configured_mode == "gemini" else "auto"
 
     def set_mode(self, mode: str) -> str:
-        self.mode = mode if mode in {"auto", "local", "ollama", "nvidia"} else "auto"
+        self.mode = mode if mode in {"auto", "local", "ollama", "nvidia", "gemini"} else "auto"
         return self.mode
+
+    def selected_provider(self) -> str:
+        if self.mode == "gemini":
+            return "gemini"
+        if self.mode == "nvidia":
+            return "nvidia"
+        if self.mode == "local":
+            return "local"
+        return "ollama"
+
+    def context_preview(self, approved_memory_summaries: list[str] | None = None) -> CloudContextPreview:
+        return self.sanitizer.preview(approved_memory_summaries=approved_memory_summaries)
 
     def route(
         self,
@@ -65,9 +82,15 @@ class ModelRouter:
         )
         print("MODEL_ROUTER_USED: true")
         cloud_allowed = bool(privacy.allow_cloud_model and privacy.allow_nvidia_api)
+        gemini_allowed = bool(
+            privacy.allow_cloud_model
+            and privacy.allow_gemini_api
+            and self.mode == "gemini"
+        )
         generic_enabled = cloud_allowed and CLOUD_PROVIDER == "openai_compatible" and self.generic_cloud.is_available() and self.mode in {"auto", "nvidia"}
         nvidia_enabled = cloud_allowed and CLOUD_PROVIDER in {"disabled", "nvidia"} and self.nvidia.api_key_available() and self.mode in {"auto", "nvidia"}
         print(f"CLOUD_ALLOWED: {str(cloud_allowed).lower()}")
+        print(f"GEMINI_ENABLED: {str(gemini_allowed).lower()}")
         print(f"NVIDIA_ENABLED: {str(nvidia_enabled).lower()}")
         last_error = ""
 
@@ -81,6 +104,41 @@ class ModelRouter:
             memory_hints=memory_hints,
             observation=observation,
         )
+        if self.mode == "gemini":
+            if not gemini_allowed:
+                return self._fallback(start, "Gemini is selected but cloud permission is off")
+            reply = self.gemini.generate_reply(safe_prompt)
+            if reply.text.strip() and not reply.error:
+                return self._done(start, "gemini", reply.model, reply.text, True, False, None)
+            last_error = reply.error or "Gemini returned no text"
+            if not self.gemini.config.fallback_to_ollama:
+                return self._done(
+                    start,
+                    "fallback",
+                    "local-fallback",
+                    "Gemini is unavailable. local tiny brain only.",
+                    False,
+                    True,
+                    last_error,
+                )
+            if privacy.allow_ollama:
+                ollama_start = time.perf_counter()
+                result = self.ollama.generate(prompt)
+                print(f"OLLAMA_DURATION_MS: {(time.perf_counter() - ollama_start) * 1000:.1f}")
+                if result.raw_text.strip() and not result.error:
+                    visible = "Gemini stumbled, so I used Ollama. " + result.raw_text
+                    return self._done(start, "ollama", result.model, visible, False, True, last_error)
+                last_error = f"{last_error}; Ollama fallback unavailable"
+            return self._done(
+                start,
+                "fallback",
+                "local-fallback",
+                "Gemini stumbled. local tiny brain only.",
+                False,
+                True,
+                last_error,
+            )
+
         if generic_enabled:
             reply = self.generic_cloud.generate_reply(safe_prompt)
             if reply.text.strip() and not reply.error:
@@ -132,5 +190,5 @@ class ModelRouter:
         print(f"MODEL_USED: {model}")
         print(f"FALLBACK_USED: {str(fallback).lower()}")
         print(f"ROUTE_SELECTED: {'local-direct-fallback' if fallback else 'model-router'}")
-        print(f"FINAL_REPLY: {reply}")
+        print(f"FINAL_REPLY: {'[cloud response omitted]' if was_cloud else reply}")
         return ModelRouterResult(provider, model, duration_ms, was_cloud, fallback, error, reply)

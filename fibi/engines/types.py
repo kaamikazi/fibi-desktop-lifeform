@@ -1529,8 +1529,10 @@ class PrivacySettings:
     allow_ollama: bool = True
     allow_memory_learning: bool = True
     allow_nvidia_api: bool = False
+    allow_gemini_api: bool = False
     allow_cloud_model: bool = False
     cloud_context_level: str = "minimal"
+    cloud_context_preview: bool = True
 
 
 @dataclass(slots=True)

@@ -3,7 +3,7 @@
 ;   python tools/build_installer.py
 
 #define MyAppName "Fibi Chubi"
-#define MyAppVersion "0.30.0"
+#define MyAppVersion "0.30.1"
 #define MyAppExeName "Fibi Chubi.exe"
 #define ProjectRoot "..\.."
 #define ReleaseDir ProjectRoot + "\dist\Fibi Chubi"
@@ -17,7 +17,7 @@ DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir={#ProjectRoot}\dist\installers
-OutputBaseFilename=Fibi_Chubi_Setup_v0.30.0
+OutputBaseFilename=Fibi_Chubi_Setup_v0.30.1
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
