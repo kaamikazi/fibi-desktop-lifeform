@@ -92,7 +92,7 @@ def test_build_metadata_command_and_error_report_path(monkeypatch: pytest.Monkey
         monkeypatch.setenv("FIBI_DATA_DIR", str(root / "data"))
         core, _, _ = make_core(root / "core", [], [])
         detailed = core.respond("/version detailed").display_text
-        assert "Fibi Chubi v0.30.1" in detailed
+        assert "Fibi Chubi v0.30.2" in detailed
         report = ErrorReportEngine().export("health api_key=SECRET", "route", ["token=SECRET"])
         assert report.parent == root / "data" / "reports"
         with zipfile.ZipFile(report) as bundle:

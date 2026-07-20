@@ -116,7 +116,7 @@ def test_core_memory_commands_and_learning_pause(tmp_path: Path) -> None:
 
 
 def test_gui_smoke_and_packaged_path() -> None:
-    assert release_zip_path().name == "Fibi_Chubi_v0.30.1_windows_beta.zip"
+    assert release_zip_path().name == "Fibi_Chubi_v0.30.2_windows_beta.zip"
     result = subprocess.run(
         [sys.executable, "app.py", "--gui-smoke"],
         cwd=Path(__file__).resolve().parents[1],

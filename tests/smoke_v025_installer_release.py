@@ -18,9 +18,9 @@ from tools.make_checksums import CHECKSUM_PATH
 
 def run() -> None:
     assert (PROJECT_ROOT / "packaging" / "inno" / "FibiChubi.iss").exists()
-    assert release_zip_path().name == "Fibi_Chubi_v0.30.1_windows_beta.zip"
-    assert release_manifest_path().name == "release_manifest_v0.30.1.json"
-    assert CHECKSUM_PATH.name == "checksums_v0.30.1.txt"
+    assert release_zip_path().name == "Fibi_Chubi_v0.30.2_windows_beta.zip"
+    assert release_manifest_path().name == "release_manifest_v0.30.2.json"
+    assert CHECKSUM_PATH.name == "checksums_v0.30.2.txt"
 
     with tempfile.TemporaryDirectory() as temp:
         root = Path(temp)

@@ -3,8 +3,8 @@
 v0.30 can ship as a portable zip first, with an optional Inno Setup installer:
 
 1. Build with `python tools/build_windows.py --clean --zip`.
-2. Share `dist/Fibi_Chubi_v0.30.1_windows_beta.zip`.
-3. If Inno Setup is available, also share `dist/installers/Fibi_Chubi_Setup_v0.30.1.exe`.
+2. Share `dist/Fibi_Chubi_v0.30.2_windows_beta.zip`.
+3. If Inno Setup is available, also share `dist/installers/Fibi_Chubi_Setup_v0.30.2.exe`.
 4. User extracts the folder and runs `Fibi Chubi.exe`, or runs the installer.
 
 ## User Data

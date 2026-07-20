@@ -11,6 +11,7 @@ from pathlib import Path
 from PyQt6.QtCore import QEvent, QObject, QPoint, QRect, QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import (
     QAction,
+    QBitmap,
     QColor,
     QFont,
     QIcon,
@@ -20,18 +21,21 @@ from PyQt6.QtGui import (
     QPen,
     QPixmap,
     QRadialGradient,
+    QRegion,
 )
 from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
     QCheckBox,
     QComboBox,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
     QMenu,
     QPushButton,
+    QSizePolicy,
     QSystemTrayIcon,
     QTabWidget,
     QTextEdit,
@@ -57,10 +61,6 @@ class FibiBridge(QObject):
     response_ready = pyqtSignal(object)
     speaking_started = pyqtSignal()
     speaking_finished = pyqtSignal(bool)
-
-
-bridge = FibiBridge()
-
 
 def _asset_path(expression: str) -> Path | None:
     """Find an expression PNG in the supported asset folders."""
@@ -91,7 +91,8 @@ class FibiSprite(QWidget):
         self._motion_started_at = 0.0
         self.pixmaps = self._load_pixmaps()
 
-        self.setMinimumSize(190, 220)
+        self.setMinimumSize(300, 390)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         self.animation_timer = QTimer(self)
         self.animation_timer.timeout.connect(self._animate)
@@ -103,7 +104,8 @@ class FibiSprite(QWidget):
         self._schedule_next_blink()
 
     def _load_pixmaps(self) -> dict[str, QPixmap]:
-        pixmaps: dict[str, QPixmap] = {}
+        loaded: dict[str, QPixmap] = {}
+        visible_bounds = QRect()
 
         for expression in (*EXPRESSIONS, BLINK_EXPRESSION):
             path = _asset_path(expression)
@@ -112,9 +114,23 @@ class FibiSprite(QWidget):
 
             pixmap = QPixmap(str(path))
             if not pixmap.isNull():
-                pixmaps[expression] = pixmap
+                loaded[expression] = pixmap
+                alpha_mask = QBitmap.fromImage(pixmap.toImage().createAlphaMask())
+                bounds = QRegion(alpha_mask).boundingRect()
+                if not bounds.isEmpty():
+                    visible_bounds = bounds if visible_bounds.isEmpty() else visible_bounds.united(bounds)
 
-        return pixmaps
+        if visible_bounds.isEmpty():
+            return loaded
+
+        # The supplied expression canvases include large transparent margins.
+        # Crop one shared padded rectangle so Fibi scales visibly without
+        # expression-to-expression jumps or changes to the source assets.
+        crop = visible_bounds.adjusted(-34, -34, 34, 34)
+        return {
+            expression: pixmap.copy(crop.intersected(pixmap.rect()))
+            for expression, pixmap in loaded.items()
+        }
 
     def set_expression(self, expression: str, temporary_ms: int = 0, force: bool = False) -> None:
         """Switch expression, falling back to idle when the PNG is missing."""
@@ -204,6 +220,29 @@ class FibiSprite(QWidget):
         self.update()
         self._schedule_next_blink()
 
+    def rendered_sprite_rect(self) -> QRect:
+        """Return the current sprite bounds using the same math as painting."""
+
+        pixmap = self.pixmaps.get(BLINK_EXPRESSION) if self.is_blinking else None
+        pixmap = pixmap or self.pixmaps.get(self.expression) or self.pixmaps.get("idle")
+        if pixmap is None:
+            return QRect()
+        target_width = max(1, int((self.width() - 10) * self.breath_scale * self.motion_scale_x))
+        target_height = max(1, int((self.height() - 24) * self.breath_scale * self.motion_scale_y))
+        scaled = pixmap.scaled(
+            QSize(target_width, target_height),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        x = (self.width() - scaled.width()) // 2 + self.motion_offset_x
+        y = (
+            (self.height() - scaled.height()) // 2
+            + self.float_offset
+            + self.talk_offset
+            + self.motion_offset_y
+        )
+        return QRect(x, y, scaled.width(), scaled.height())
+
     def paintEvent(self, event) -> None:  # noqa: N802 - PyQt method name
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -221,16 +260,12 @@ class FibiSprite(QWidget):
         pixmap = self.pixmaps.get(BLINK_EXPRESSION) if self.is_blinking else None
         pixmap = pixmap or self.pixmaps.get(self.expression) or self.pixmaps.get("idle")
         if pixmap:
-            target_width = max(1, int((width - 10) * self.breath_scale * self.motion_scale_x))
-            target_height = max(1, int((height - 24) * self.breath_scale * self.motion_scale_y))
             scaled = pixmap.scaled(
-                QSize(target_width, target_height),
+                self.rendered_sprite_rect().size(),
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation,
             )
-            x = (width - scaled.width()) // 2 + self.motion_offset_x
-            y = (height - scaled.height()) // 2 + self.float_offset + self.talk_offset + self.motion_offset_y
-            painter.drawPixmap(x, y, scaled)
+            painter.drawPixmap(self.rendered_sprite_rect().topLeft(), scaled)
             return
 
         painter.setPen(QPen(QColor(255, 225, 245)))
@@ -255,7 +290,9 @@ class SpeechBubble(QWidget):
         self.hide_timer = QTimer(self)
         self.hide_timer.setSingleShot(True)
         self.hide_timer.timeout.connect(self._auto_hide)
-        self.setMinimumSize(190, 92)
+        self.setMinimumSize(210, 108)
+        self.setMaximumHeight(148)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
     def show_text(self, text: str, options: BubbleDisplayOptions | None = None) -> None:
         options = options or BubbleDisplayOptions()
@@ -623,6 +660,9 @@ class FibiSettingsDialog(QDialog):
         )
         selected_provider = str(self.provider_combo.currentData())
         self.core.handle_local_command(f"/provider use {selected_provider}")
+        parent = self.parent()
+        if parent is not None and hasattr(parent, "_refresh_provider_badge"):
+            parent._refresh_provider_badge()
         if self.checks["quiet_mode"].isChecked():
             self.core.boundary.enable_quiet(None, reason="settings")
         else:
@@ -947,6 +987,7 @@ class FibiWindow(QWidget):
         self._request_serial = 0
         self._quitting = False
         self._voice_listening = False
+        self.bridge = FibiBridge(self)
         self.tray_icon: QSystemTrayIcon | None = None
         self.health_dialog: FibiHealthDialog | None = None
         self.command_center_dialog: FibiCommandCenterDialog | None = None
@@ -973,25 +1014,52 @@ class FibiWindow(QWidget):
             flags |= Qt.WindowType.WindowStaysOnTopHint
         self.setWindowFlags(flags)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedSize(470, 330)
+        self.setMinimumSize(580, 620)
+        self.resize(680, 660)
         self.setAcceptDrops(True)
 
     def _build_ui(self) -> None:
-        main_layout = QHBoxLayout(self)
-        main_layout.setContentsMargins(14, 14, 14, 14)
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(18, 16, 18, 16)
         main_layout.setSpacing(10)
 
-        self.sprite = FibiSprite(self.life)
-        main_layout.addWidget(self.sprite, 1)
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(2, 0, 2, 0)
+        header_layout.setSpacing(10)
 
-        side_layout = QVBoxLayout()
-        side_layout.setSpacing(8)
+        self.name_label = QLabel("Fibi")
+        self.name_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.name_label.setAccessibleName("Fibi companion")
+        self.name_label.setStyleSheet(
+            "color: rgba(255, 248, 253, 245); font: bold 16pt 'Segoe UI';"
+        )
+        header_layout.addWidget(self.name_label)
+        header_layout.addStretch(1)
+
+        self.provider_badge = QLabel()
+        self.provider_badge.setObjectName("providerBadge")
+        self.provider_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.provider_badge.setAccessibleName("Current language provider")
+        self.provider_badge.setMinimumHeight(28)
+        self.provider_badge.setContentsMargins(10, 0, 10, 0)
+        header_layout.addWidget(self.provider_badge)
+        main_layout.addLayout(header_layout)
+
+        self.presence_area = QWidget()
+        self.presence_area.setObjectName("presenceArea")
+        presence_layout = QHBoxLayout(self.presence_area)
+        presence_layout.setContentsMargins(0, 0, 0, 0)
+        presence_layout.setSpacing(14)
+
+        self.sprite = FibiSprite(self.life)
+        presence_layout.addWidget(self.sprite, 3)
 
         self.bubble = SpeechBubble()
-        side_layout.addWidget(self.bubble)
+        presence_layout.addWidget(self.bubble, 2, Qt.AlignmentFlag.AlignVCenter)
+        main_layout.addWidget(self.presence_area, 1)
 
         self.context_label = QLabel("")
-        self.context_label.setFixedHeight(22)
+        self.context_label.setMinimumHeight(22)
         self.context_label.setStyleSheet(
             """
             QLabel {
@@ -1005,10 +1073,10 @@ class FibiWindow(QWidget):
             """
         )
         self.context_label.hide()
-        side_layout.addWidget(self.context_label)
+        main_layout.addWidget(self.context_label)
 
         self.session_label = QLabel("")
-        self.session_label.setFixedHeight(22)
+        self.session_label.setMinimumHeight(22)
         self.session_label.setStyleSheet(
             """
             QLabel {
@@ -1022,21 +1090,27 @@ class FibiWindow(QWidget):
             """
         )
         self.session_label.hide()
-        side_layout.addWidget(self.session_label)
+        main_layout.addWidget(self.session_label)
 
-        input_row = QHBoxLayout()
+        self.input_bar = QWidget()
+        self.input_bar.setObjectName("inputBar")
+        input_row = QHBoxLayout(self.input_bar)
+        input_row.setContentsMargins(0, 0, 0, 0)
         input_row.setSpacing(6)
 
         self.chat_input = QLineEdit()
         self.chat_input.setPlaceholderText("Talk to Fibi...")
-        self.chat_input.setFixedHeight(34)
+        self.chat_input.setAccessibleName("Message Fibi")
+        self.chat_input.setMinimumHeight(40)
+        self.chat_input.setMinimumWidth(180)
+        self.chat_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.chat_input.returnPressed.connect(lambda: self._safe_ui_call("send_message", self._send_message))
         self.chat_input.setStyleSheet(
             """
             QLineEdit {
                 background: rgba(255, 255, 255, 230);
                 border: 2px solid rgba(244, 155, 205, 210);
-                border-radius: 12px;
+                border-radius: 8px;
                 color: #33223d;
                 font: 10pt 'Segoe UI';
                 padding: 0 10px;
@@ -1046,10 +1120,11 @@ class FibiWindow(QWidget):
             }
             """
         )
-        input_row.addWidget(self.chat_input)
+        input_row.addWidget(self.chat_input, 1)
 
         self.mic_button = QPushButton("Mic")
-        self.mic_button.setFixedSize(46, 34)
+        self.mic_button.setAccessibleName("Start voice input")
+        self.mic_button.setFixedSize(62, 40)
         self.mic_button.clicked.connect(lambda: self._safe_ui_call("mic_button", self._listen_voice))
         self.mic_button.setToolTip("Push to talk")
         self.mic_button.setStyleSheet(
@@ -1057,102 +1132,171 @@ class FibiWindow(QWidget):
             QPushButton {
                 background: rgba(255, 248, 253, 230);
                 border: 1px solid rgba(244, 155, 205, 210);
-                border-radius: 12px;
+                border-radius: 8px;
                 color: #5b3768;
-                font: bold 8pt 'Segoe UI';
+                font: bold 9pt 'Segoe UI';
             }
             QPushButton:hover { background: rgba(255, 230, 245, 245); }
+            QPushButton:focus { border: 2px solid rgba(139, 92, 246, 230); }
             QPushButton:disabled { color: rgba(91, 55, 104, 110); }
             """
         )
         input_row.addWidget(self.mic_button)
 
         self.send_button = QPushButton("Send")
-        self.send_button.setFixedSize(58, 34)
+        self.send_button.setAccessibleName("Send message")
+        self.send_button.setFixedSize(72, 40)
         self.send_button.clicked.connect(lambda: self._safe_ui_call("send_button", self._send_message))
         self.send_button.setStyleSheet(
             """
             QPushButton {
                 background: rgba(244, 155, 205, 235);
-                border: 0;
-                border-radius: 12px;
+                border: 1px solid rgba(255, 255, 255, 90);
+                border-radius: 8px;
                 color: white;
                 font: bold 9pt 'Segoe UI';
             }
             QPushButton:hover { background: rgba(236, 115, 180, 245); }
             QPushButton:pressed { background: rgba(215, 90, 160, 255); }
+            QPushButton:focus { border: 2px solid rgba(255, 255, 255, 230); }
             """
         )
         input_row.addWidget(self.send_button)
-        side_layout.addLayout(input_row)
+        main_layout.addWidget(self.input_bar)
 
-        self.notebook_button = QPushButton("Notebook")
-        self.notebook_button.setFixedHeight(30)
-        self.notebook_button.clicked.connect(lambda: self._safe_ui_call("open_notebook", self._open_notebook))
-        self.notebook_button.setStyleSheet(
-            """
-            QPushButton {
-                background: rgba(255, 248, 253, 230);
-                border: 1px solid rgba(244, 155, 205, 210);
-                border-radius: 10px;
-                color: #5b3768;
-                font: 9pt 'Segoe UI';
-            }
-            QPushButton:hover { background: rgba(255, 230, 245, 245); }
-            """
+        self.action_footer = QWidget()
+        self.action_footer.setObjectName("actionFooter")
+        action_layout = QGridLayout(self.action_footer)
+        action_layout.setContentsMargins(0, 0, 0, 0)
+        action_layout.setHorizontalSpacing(6)
+        action_layout.setVerticalSpacing(6)
+
+        self.memory_review_button = self._make_action_button(
+            "Memory", "Memory Review Center", self._open_memory_review
         )
-        side_layout.addWidget(self.notebook_button)
+        self.workflow_button = self._make_action_button(
+            "Workflows", "Workflow recipe commands", self._open_workflow_help
+        )
+        self.browser_button = self._make_action_button(
+            "Browser", "Browser helper commands", self._open_browser_help
+        )
+        self.command_button = self._make_action_button(
+            "Commands", "Command Center", self._open_command_center
+        )
+        self.notebook_button = self._make_action_button(
+            "Notebook", "Fibi's local notebook", self._open_notebook
+        )
+        self.health_button = self._make_action_button(
+            "Health", "Local health summary", self._open_health
+        )
+        self.report_button = self._make_action_button(
+            "Report", "Start a local beta issue note", self._open_beta_report
+        )
+        self.settings_button = self._make_action_button(
+            "Settings", "Open local settings", self._open_settings
+        )
 
-        self.command_button = QPushButton("Commands")
-        self.command_button.setFixedHeight(28)
-        self.command_button.setToolTip("Command Center")
-        self.command_button.clicked.connect(lambda: self._safe_ui_call("open_command_center", self._open_command_center))
-        self.command_button.setStyleSheet(self.notebook_button.styleSheet())
-        side_layout.addWidget(self.command_button)
+        action_buttons = (
+            self.memory_review_button,
+            self.workflow_button,
+            self.browser_button,
+            self.command_button,
+            self.notebook_button,
+            self.health_button,
+            self.report_button,
+            self.settings_button,
+        )
+        for index, button in enumerate(action_buttons):
+            action_layout.addWidget(button, index // 4, index % 4)
+            action_layout.setColumnStretch(index % 4, 1)
+        main_layout.addWidget(self.action_footer)
 
-        self.memory_review_button = QPushButton("Memory")
-        self.memory_review_button.setFixedHeight(28)
-        self.memory_review_button.setToolTip("Memory Review Center")
-        self.memory_review_button.clicked.connect(lambda: self._safe_ui_call("open_memory_review", self._open_memory_review))
-        self.memory_review_button.setStyleSheet(self.notebook_button.styleSheet())
-        side_layout.addWidget(self.memory_review_button)
+        self.setTabOrder(self.chat_input, self.mic_button)
+        self.setTabOrder(self.mic_button, self.send_button)
+        previous = self.send_button
+        for button in action_buttons:
+            self.setTabOrder(previous, button)
+            previous = button
 
-        self.health_button = QPushButton("Health")
-        self.health_button.setFixedHeight(28)
-        self.health_button.clicked.connect(lambda: self._safe_ui_call("open_health", self._open_health))
-        self.health_button.setStyleSheet(self.notebook_button.styleSheet())
-        side_layout.addWidget(self.health_button)
-
-        self.report_button = QPushButton("Report")
-        self.report_button.setFixedHeight(28)
-        self.report_button.setToolTip("Start a local beta issue note")
-        self.report_button.clicked.connect(lambda: self._safe_ui_call("open_beta_report", self._open_beta_report))
-        self.report_button.setStyleSheet(self.notebook_button.styleSheet())
-        side_layout.addWidget(self.report_button)
-
-        self.browser_button = QPushButton("Browser")
-        self.browser_button.setFixedHeight(28)
-        self.browser_button.setToolTip("Browser helper commands")
-        self.browser_button.clicked.connect(lambda: self._safe_ui_call("open_browser_help", self._open_browser_help))
-        self.browser_button.setStyleSheet(self.notebook_button.styleSheet())
-        side_layout.addWidget(self.browser_button)
-
-        self.name_label = QLabel("Fibi")
-        self.name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.name_label.setStyleSheet("color: rgba(255, 230, 245, 210); font: bold 10pt 'Segoe UI';")
-        side_layout.addWidget(self.name_label)
-        side_layout.addStretch(1)
-
-        main_layout.addLayout(side_layout, 1)
+        self._refresh_provider_badge()
 
         # These areas are safe handles for moving the floating window around.
         for widget in (self, self.sprite, self.bubble, self.name_label):
             widget.installEventFilter(self)
 
+    def _make_action_button(self, label: str, tooltip: str, callback) -> QPushButton:
+        """Create one consistent compact footer action."""
+
+        button = QPushButton(label)
+        button.setAccessibleName(label)
+        button.setToolTip(tooltip)
+        button.setMinimumHeight(32)
+        button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        button.clicked.connect(lambda checked=False, cb=callback, name=label: self._safe_ui_call(f"footer:{name}", cb))
+        button.setStyleSheet(
+            """
+            QPushButton {
+                background: rgba(255, 248, 253, 225);
+                border: 1px solid rgba(244, 155, 205, 205);
+                border-radius: 8px;
+                color: #5b3768;
+                font: 8pt 'Segoe UI';
+                padding: 4px 7px;
+            }
+            QPushButton:hover { background: rgba(255, 230, 245, 245); }
+            QPushButton:pressed { background: rgba(247, 204, 230, 245); }
+            QPushButton:focus { border: 2px solid rgba(139, 92, 246, 225); }
+            """
+        )
+        return button
+
+    def _provider_badge_details(self, response: FibiResponse | None = None) -> tuple[str, str, str]:
+        """Return a concise provider label derived from current runtime state."""
+
+        selected = self.core.model_router.selected_provider()
+        privacy = self.core.privacy.settings
+        gemini_active = bool(
+            selected == "gemini"
+            and privacy.allow_cloud_model
+            and privacy.allow_gemini_api
+        )
+        if response is not None and gemini_active and response.used_fallback:
+            model = response.model_used.lower()
+            if model and "local" not in model and "fallback" not in model:
+                return "FALLBACK - Ollama", "Gemini fell back to the enabled local Ollama provider.", "fallback"
+            return "LOCAL - Fibi", "The cloud provider was unavailable; Fibi used a local fallback.", "local"
+        if gemini_active:
+            return "CLOUD - Gemini", "Gemini is selected. Only approved cloud context may be sent.", "cloud"
+        return "LOCAL - Ollama", "Local language mode. Cloud generation is not active.", "local"
+
+    def _refresh_provider_badge(self, response: FibiResponse | None = None) -> None:
+        text, tooltip, mode = self._provider_badge_details(response)
+        self.provider_badge.setText(text)
+        self.provider_badge.setToolTip(tooltip)
+        self.provider_badge.setProperty("providerMode", mode)
+        colors = {
+            "cloud": ("rgba(239, 233, 255, 235)", "#4c2f78", "rgba(190, 163, 238, 220)"),
+            "fallback": ("rgba(255, 244, 214, 238)", "#6b4b15", "rgba(225, 184, 92, 220)"),
+            "local": ("rgba(255, 248, 253, 230)", "#5b3768", "rgba(244, 155, 205, 205)"),
+        }
+        background, foreground, border = colors[mode]
+        self.provider_badge.setStyleSheet(
+            f"""
+            QLabel {{
+                background: {background};
+                color: {foreground};
+                border: 1px solid {border};
+                border-radius: 8px;
+                font: bold 8pt 'Segoe UI';
+                padding: 3px 9px;
+            }}
+            """
+        )
+
     def _connect_signals(self) -> None:
-        bridge.response_ready.connect(self._on_response)
-        bridge.speaking_started.connect(self._on_speaking_started)
-        bridge.speaking_finished.connect(self._on_speaking_finished)
+        self.bridge.response_ready.connect(self._on_response)
+        self.bridge.speaking_started.connect(self._on_speaking_started)
+        self.bridge.speaking_finished.connect(self._on_speaking_finished)
 
     def _setup_tray(self) -> None:
         if not QSystemTrayIcon.isSystemTrayAvailable():
@@ -1326,11 +1470,11 @@ class FibiWindow(QWidget):
         def worker() -> None:
             try:
                 result = self.core.start_voice_listen(source="mic_button")
-                bridge.response_ready.emit(result)
+                self.bridge.response_ready.emit(result)
             except Exception as error:
                 print(f"ERROR: voice listen failed: {error}")
                 timing = self.core.timing.select(event="fallback", mood="sleepy", fallback=True)
-                bridge.response_ready.emit(
+                self.bridge.response_ready.emit(
                     FibiResponse("mic creature tripped.", "mic creature tripped", "sleepy", "voice-ui-fallback", True, timing, None)
                 )
 
@@ -1365,13 +1509,13 @@ class FibiWindow(QWidget):
                 self.chat_history.append({"role": "user", "content": user_text})
                 self.chat_history.append({"role": "assistant", "content": response})
                 self.chat_history = self.chat_history[-20:]
-                bridge.response_ready.emit(result)
+                self.bridge.response_ready.emit(result)
             except Exception as error:
                 print(f"ERROR: FibiCore response failed: {error}")
                 if request_id != self._request_serial:
                     return
                 timing = self.core.timing.select(event="fallback", mood="idle", fallback=True)
-                bridge.response_ready.emit(
+                self.bridge.response_ready.emit(
                     FibiResponse("tiny engine tripped. one sec.", "tiny engine tripped", "idle", "ui-fallback", True, timing, None)
                 )
 
@@ -1383,6 +1527,7 @@ class FibiWindow(QWidget):
         self._voice_listening = False
         if hasattr(self, "mic_button"):
             self.mic_button.setEnabled(True)
+        self._refresh_provider_badge(result)
         text = clean_response(result.display_text)
         self.life.set_thinking(False)
         timing = result.timing or self.core.timing.select(event="reply", mood=result.mood)
@@ -1430,7 +1575,7 @@ class FibiWindow(QWidget):
             started = time.perf_counter()
             print("EDGE_TTS_START")
             self.core.tts_manager.mark_started()
-            bridge.speaking_started.emit()
+            self.bridge.speaking_started.emit()
             base_path = ""
             spoke = False
             try:
@@ -1457,7 +1602,7 @@ class FibiWindow(QWidget):
             print(f"TTS_DURATION_MS: {duration_ms:.1f}")
             self.core.tts_manager.mark_finished(duration_ms)
             self.core.health.record_tts(duration_ms)
-            bridge.speaking_finished.emit(spoke)
+            self.bridge.speaking_finished.emit(spoke)
 
         self._expression_after_speech = expression_after if expression_after in ("happy", "idle") else "happy"
         threading.Thread(target=worker, daemon=True).start()

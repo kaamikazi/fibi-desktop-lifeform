@@ -1,4 +1,4 @@
-# PyInstaller spec for Fibi Chubi v0.30.1.
+# PyInstaller spec for Fibi Chubi v0.30.2.
 #
 # Build from the project root:
 #   python -m PyInstaller packaging/pyinstaller_fibi.spec --noconfirm
@@ -36,6 +36,7 @@ datas += include_if_exists(ROOT / "docs" / "MEMORY_REVIEW_CENTER_V030.md", "docs
 datas += include_if_exists(ROOT / "docs" / "MEMORY_PRIVACY_V030.md", "docs")
 datas += include_if_exists(ROOT / "docs" / "GEMINI_PROVIDER_V0301.md", "docs")
 datas += include_if_exists(ROOT / "docs" / "CLOUD_CONTEXT_PRIVACY_V0301.md", "docs")
+datas += include_if_exists(ROOT / "docs" / "DEMO_UI_POLISH_V0302.md", "docs")
 datas += include_if_exists(ROOT / "updates", "updates")
 datas += include_if_exists(ROOT / "packaging" / "README.md", "packaging")
 datas += include_if_exists(ROOT / "packaging" / "installer_notes.md", "packaging")

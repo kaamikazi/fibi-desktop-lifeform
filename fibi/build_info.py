@@ -8,7 +8,7 @@ from datetime import datetime
 
 from fibi.runtime_paths import is_packaged
 
-APP_VERSION = "0.30.1"
+APP_VERSION = "0.30.2"
 BUILD_DATE = os.getenv("FIBI_BUILD_DATE", datetime.now().astimezone().isoformat(timespec="seconds"))
 BUILD_MODE = os.getenv("FIBI_BUILD_MODE", "local-dev")
 GIT_COMMIT = os.getenv("FIBI_GIT_COMMIT", "")

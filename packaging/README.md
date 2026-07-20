@@ -12,8 +12,8 @@ Output:
 
 ```text
 dist/Fibi Chubi/Fibi Chubi.exe
-dist/Fibi_Chubi_v0.30.1_windows_beta.zip
-dist/installers/Fibi_Chubi_Setup_v0.30.1.exe
+dist/Fibi_Chubi_v0.30.2_windows_beta.zip
+dist/installers/Fibi_Chubi_Setup_v0.30.2.exe
 ```
 
 Rules:

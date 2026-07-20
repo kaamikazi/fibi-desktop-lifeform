@@ -27,6 +27,7 @@ SMOKE_TESTS = [
     "tests/smoke_v029_command_center.py",
     "tests/smoke_v030_memory_review.py",
     "tests/smoke_v0301_gemini_provider.py",
+    "tests/smoke_v0302_demo_ui.py",
 ]
 
 
@@ -57,7 +58,7 @@ def ensure_pyinstaller() -> None:
 
 
 def run_tests(skip_tests: bool) -> None:
-    run_command([sys.executable, "-m", "compileall", "-q", "."])
+    run_command([sys.executable, "-m", "compileall", "-q", "app.py", "fibi", "tests", "tools"])
     if skip_tests:
         return
     for smoke in SMOKE_TESTS:
@@ -94,11 +95,11 @@ def zip_release() -> Path:
 
 
 def release_zip_path() -> Path:
-    return DIST_DIR / "Fibi_Chubi_v0.30.1_windows_beta.zip"
+    return DIST_DIR / "Fibi_Chubi_v0.30.2_windows_beta.zip"
 
 
 def release_manifest_path() -> Path:
-    return DIST_DIR / "release_manifest_v0.30.1.json"
+    return DIST_DIR / "release_manifest_v0.30.2.json"
 
 
 def _sha256(path: Path) -> str:
@@ -116,7 +117,7 @@ def write_release_manifest(zip_path: Path | None = None, installer_path: Path | 
 
     exe = RELEASE_DIR / "Fibi Chubi.exe"
     zip_path = zip_path or release_zip_path()
-    installer_path = installer_path or (DIST_DIR / "installers" / "Fibi_Chubi_Setup_v0.30.1.exe")
+    installer_path = installer_path or (DIST_DIR / "installers" / "Fibi_Chubi_Setup_v0.30.2.exe")
     docs = [
         "README.md",
         "docs/RELEASE_NOTES_V024.md",
@@ -135,10 +136,11 @@ def write_release_manifest(zip_path: Path | None = None, installer_path: Path | 
         "docs/MEMORY_PRIVACY_V030.md",
         "docs/GEMINI_PROVIDER_V0301.md",
         "docs/CLOUD_CONTEXT_PRIVACY_V0301.md",
+        "docs/DEMO_UI_POLISH_V0302.md",
         "packaging/installer_notes.md",
     ]
     manifest = {
-        "app_version": "0.30.1",
+        "app_version": "0.30.2",
         "build_date": datetime.now().astimezone().isoformat(timespec="seconds"),
         "zip_path": str(zip_path),
         "installer_path": str(installer_path) if installer_path.exists() else "",
@@ -147,7 +149,7 @@ def write_release_manifest(zip_path: Path | None = None, installer_path: Path | 
         "installer_size": installer_path.stat().st_size if installer_path.exists() else 0,
         "included_docs": docs,
         "excluded_sensitive_folders": ["data", "logs", "reports", "exports", "voice_cache", "tts_temp", "voice_models"],
-        "test_summary": "compileall, smoke_v022, smoke_v023, smoke_v024, smoke_v025, smoke_v026, smoke_v027, smoke_v028, smoke_v029, smoke_v030, verify_release",
+        "test_summary": "compileall, smoke_v022 through smoke_v0302, verify_release",
         "checksums": {
             "zip_sha256": _sha256(zip_path) if zip_path.exists() else "",
             "installer_sha256": _sha256(installer_path) if installer_path.exists() else "",

@@ -2,6 +2,18 @@
 
 This document records the work completed on Fibi so far.
 
+## 30.2. Demo UI Polish
+
+- Updated the patch version to `0.30.2`.
+- Replaced the fixed, crowded two-column main window with responsive header,
+  presence, input, and compact action zones.
+- Added a subtle provider badge derived from existing local/cloud state.
+- Increased Fibi's visible size by cropping transparent PNG canvas margins in
+  memory while preserving source assets, expression alignment, and animation.
+- Kept all existing main-window destinations available in a compact footer.
+- Added focused geometry, provider-state, secret-visibility, and isolated-data
+  tests plus an offscreen UI smoke test.
+
 ## 30.1. Optional Gemini Development Provider
 
 - Updated patch version to `0.30.1`.

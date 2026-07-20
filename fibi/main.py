@@ -17,7 +17,21 @@ def main(gui_smoke: bool = False) -> int:
 
     window = FibiWindow()
     if gui_smoke:
-        required = ["sprite", "bubble", "chat_input", "send_button", "command_button", "memory_review_button", "core"]
+        required = [
+            "sprite",
+            "bubble",
+            "provider_badge",
+            "input_bar",
+            "chat_input",
+            "mic_button",
+            "send_button",
+            "action_footer",
+            "command_button",
+            "memory_review_button",
+            "workflow_button",
+            "settings_button",
+            "core",
+        ]
         missing = [name for name in required if not hasattr(window, name)]
         if missing:
             print("GUI_SMOKE_FAILED missing: " + ", ".join(missing))

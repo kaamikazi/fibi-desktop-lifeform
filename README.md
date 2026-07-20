@@ -60,10 +60,20 @@ The goal is not to claim consciousness or autonomy. The goal is a more durable d
 - Cloud context is minimized and previewable before use.
 - Gemini failures can visibly fall back once to local Ollama.
 
+### Demo UI Polish
+
+- v0.30.2 gives the floating companion a responsive four-zone layout.
+- Fibi is visually larger without modifying the expression PNG assets.
+- The chat input expands while Mic and Send keep stable, non-overlapping sizes.
+- Existing Memory, Workflows, Browser, Commands, Notebook, Health, Report, and
+  Settings destinations remain available in a compact footer.
+- A state-driven badge shows local, Gemini, or fallback mode without exposing
+  credentials or provider context.
+
 ### Local Beta Packaging
 
 - Windows portable build tooling exists.
-- A verified portable ZIP and executable were produced locally for v0.30.1.
+- A verified portable ZIP and executable were produced locally for v0.30.2.
 - Generated binaries and `dist/` are intentionally not committed to this source repository.
 - Inno Setup was not installed in the verified environment, so no installer EXE was produced.
 
@@ -116,6 +126,7 @@ Read more:
 - [RAG Migration Guide](docs/RAG_MIGRATION_GUIDE.md)
 - [Optional Gemini Provider](docs/GEMINI_PROVIDER_V0301.md)
 - [Cloud Context Privacy](docs/CLOUD_CONTEXT_PRIVACY_V0301.md)
+- [Demo UI Polish](docs/DEMO_UI_POLISH_V0302.md)
 
 ## Safety Model
 
@@ -237,7 +248,7 @@ policies and limits before use.
 
 ### B. Portable Windows Beta
 
-The verified v0.30.1 portable ZIP and executable were generated locally by the release tooling:
+The verified v0.30.2 portable ZIP and executable were generated locally by the release tooling:
 
 ```powershell
 python tools\build_windows.py --clean --zip
@@ -274,12 +285,12 @@ For the larger command list, see [docs/COMMANDS_V029.md](docs/COMMANDS_V029.md).
 
 ## Testing and Verification
 
-Verified v0.30.1 results:
+Verified v0.30.2 results:
 
-- 156 tests passed
+- 162 tests passed
 - 3 warnings
 - GUI smoke passed
-- v0.29, v0.30, and mocked v0.30.1 provider smoke tests passed
+- v0.29, v0.30, mocked v0.30.1 provider, and v0.30.2 UI smoke tests passed
 - Windows build verification passed
 - checksum generation passed
 - ZIP privacy scan passed

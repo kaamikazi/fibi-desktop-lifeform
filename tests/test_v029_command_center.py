@@ -111,7 +111,7 @@ def test_command_center_gui_does_not_crash() -> None:
 
 
 def test_packaged_v029_paths() -> None:
-    assert release_zip_path().name == "Fibi_Chubi_v0.30.1_windows_beta.zip"
+    assert release_zip_path().name == "Fibi_Chubi_v0.30.2_windows_beta.zip"
 
 
 def _settings_snapshot(core) -> tuple[object, ...]:

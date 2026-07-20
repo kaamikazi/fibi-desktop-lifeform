@@ -1,9 +1,9 @@
 {
-  "latest_version": "0.30.1",
+  "latest_version": "0.30.2",
   "channel": "windows-beta",
   "release_date": "2026-07-20",
-  "release_notes": "Fibi v0.30.1 adds an optional, explicit-opt-in Gemini language provider while preserving local identity, memory, safety, and Ollama fallback.",
-  "artifact": "Fibi_Chubi_v0.30.1_windows_beta.zip",
+  "release_notes": "Fibi v0.30.2 polishes the demo UI with responsive layout, larger character rendering, compact navigation, and a safe provider badge.",
+  "artifact": "Fibi_Chubi_v0.30.2_windows_beta.zip",
   "download_url": "",
   "sha256": "",
   "required": false,

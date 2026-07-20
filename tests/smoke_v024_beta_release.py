@@ -21,7 +21,7 @@ def run() -> None:
         os.environ["FIBI_DATA_DIR"] = str(root / "data")
         core, _, _ = make_core(root / "core", [], [])
 
-        assert "Fibi Chubi v0.30.1" in core.respond("/version").display_text
+        assert "Fibi Chubi v0.30.2" in core.respond("/version").display_text
         assert "cloud off" in core.respond("/first run status").display_text
         assert "beta mode" in core.respond("/beta status").display_text
         assert "beta mode on" in core.respond("/beta on").display_text
@@ -29,7 +29,7 @@ def run() -> None:
         assert "self test survived" in core.respond("/self test").display_text
         assert "packed the safe crumbs" in core.respond("/support bundle").display_text
         assert (Path(os.environ["FIBI_DATA_DIR"]) / "reports").exists()
-        assert release_zip_path().name == "Fibi_Chubi_v0.30.1_windows_beta.zip"
+        assert release_zip_path().name == "Fibi_Chubi_v0.30.2_windows_beta.zip"
 
     print("Fibi v0.24 beta release smoke tests passed.")
 
