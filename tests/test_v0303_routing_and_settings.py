@@ -103,6 +103,19 @@ def test_greeting_stays_local_while_gemini_selected(tmp_path: Path) -> None:
     assert ollama.calls == 0
 
 
+def test_live_data_uses_opted_in_gemini_search_grounding(tmp_path: Path) -> None:
+    core, ollama, _ = make_core(tmp_path / "gemini-search", [], [])
+    api = FakeModelsAPI(response_text="grounded tiny weather")
+    core.model_router = ModelRouter(ollama=ollama, gemini=provider_with(api))
+    core.model_router.set_mode("gemini")
+    core.privacy.update(allow_cloud_model=True, allow_gemini_api=True)
+    response = core.respond("weather today")
+    assert response.display_text == "grounded tiny weather"
+    assert api.generate_calls == 1
+    assert api.configs[0]["tools"] == [{"google_search": {}}]
+    assert ollama.calls == 0
+
+
 def test_provider_selection_persists_without_storing_secret(tmp_path: Path) -> None:
     core, ollama, _ = make_core(tmp_path / "persist-provider", [], [])
     core.model_router = ModelRouter(ollama=ollama, gemini=provider_with(FakeModelsAPI()))

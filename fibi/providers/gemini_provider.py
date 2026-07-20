@@ -31,6 +31,7 @@ Jitter = Callable[[float, float], float]
 
 RETRYABLE_CATEGORIES = {"temporary_unavailable", "network_error"}
 TRANSIENT_STATES = {"degraded", "rate_limited"}
+PREFERRED_MODEL = "gemini-3.1-flash-lite"
 
 
 class ProviderError(RuntimeError):
@@ -116,6 +117,8 @@ class GeminiProvider(CloudProviderBase):
             retry_after_seconds=retry_after,
             last_retry_count=self.last_retry_count,
             candidate_models=self._candidate_cache or (),
+            google_search_enabled=self.config.google_search,
+            thinking_level=self.config.thinking_level,
         )
 
     def retry_after_seconds(self) -> int:
@@ -180,6 +183,9 @@ class GeminiProvider(CloudProviderBase):
             reverse=True,
         )
         ranked = ([configured] if configured else []) + flash + other
+        if not configured and PREFERRED_MODEL in ranked:
+            ranked.remove(PREFERRED_MODEL)
+            ranked.insert(0, PREFERRED_MODEL)
         candidates = tuple(dict.fromkeys(model for model in ranked if model))[:3]
         if not candidates:
             raise ProviderError(
@@ -199,6 +205,7 @@ class GeminiProvider(CloudProviderBase):
         *,
         bypass_health: bool = False,
         max_attempts: int | None = None,
+        use_google_search: bool = False,
     ) -> CloudProviderReply:
         """Generate with at most two attempts and no prompt logging.
 
@@ -227,7 +234,11 @@ class GeminiProvider(CloudProviderBase):
             attempt_started = time.perf_counter()
             LOGGER.info("gemini_attempt attempt=%d model=%s", attempt, model)
             try:
-                text, response = self._generate_once(model, context)
+                text, response = self._generate_once(
+                    model,
+                    context,
+                    use_google_search=use_google_search,
+                )
                 if not text.strip():
                     raise ProviderError("malformed_response", "Gemini returned an empty response")
                 self.last_usage = self._usage_from_response(response)
@@ -316,18 +327,52 @@ class GeminiProvider(CloudProviderBase):
             )
         return None
 
-    def _generate_once(self, model: str, context: str) -> tuple[str, Any | None]:
+    def _generate_once(
+        self,
+        model: str,
+        context: str,
+        *,
+        use_google_search: bool,
+    ) -> tuple[str, Any | None]:
         models_api = self._get_client().models
-        config = {
+        config_values: dict[str, Any] = {
             "temperature": 0.8,
             "top_p": 0.9,
             "max_output_tokens": self.max_tokens,
+            "thinking_config": {"thinking_level": self.config.thinking_level},
         }
+        if use_google_search and self.config.google_search:
+            config_values["tools"] = [{"google_search": {}}]
+        config = self._typed_generation_config(config_values)
         if self.config.streaming:
             chunks = models_api.generate_content_stream(model=model, contents=context, config=config)
             return "".join(str(getattr(chunk, "text", "") or "") for chunk in chunks), None
         response = models_api.generate_content(model=model, contents=context, config=config)
         return str(getattr(response, "text", "") or ""), response
+
+    def _typed_generation_config(self, values: dict[str, Any]) -> Any:
+        """Use SDK types in production while keeping injected test clients simple."""
+
+        if self._client_factory is not None:
+            return values
+        try:
+            from google.genai import types
+        except ImportError as error:
+            raise ProviderError("model_unavailable", "google-genai SDK is not installed") from error
+        tools = (
+            [types.Tool(google_search=types.GoogleSearch())]
+            if "tools" in values
+            else None
+        )
+        return types.GenerateContentConfig(
+            temperature=values["temperature"],
+            top_p=values["top_p"],
+            max_output_tokens=values["max_output_tokens"],
+            thinking_config=types.ThinkingConfig(
+                thinking_level=self.config.thinking_level,
+            ),
+            tools=tools,
+        )
 
     def _get_client(self) -> Any:
         if self._client is not None:

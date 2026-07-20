@@ -80,6 +80,7 @@ class ModelRouter:
         fast_category: str = "unknown",
         local_brain_confidence: str = "n/a",
         local_brain_handled: bool | None = None,
+        requires_live_data: bool = False,
     ) -> ModelRouterResult:
         start = time.perf_counter()
         print("ROUTER START")
@@ -124,7 +125,10 @@ class ModelRouter:
             if not gemini_allowed:
                 return self._fallback(start, "Gemini is selected but cloud permission is off")
             self.last_attempted_provider = "gemini"
-            reply = self.gemini.generate_reply(safe_prompt)
+            reply = self.gemini.generate_reply(
+                safe_prompt,
+                use_google_search=requires_live_data,
+            )
             self.last_generation_latency_ms = reply.duration_ms
             self.last_retry_count = reply.retry_count
             if reply.text.strip() and not reply.error:

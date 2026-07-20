@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 def _env_bool(name: str, default: bool) -> bool:
     value = os.getenv(name)
-    if value is None:
+    if value is None or not value.strip():
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
@@ -30,8 +30,10 @@ class GeminiProviderConfig:
     model: str = ""
     timeout_seconds: int = 8
     fallback_to_ollama: bool = True
-    streaming: bool = False
+    streaming: bool = True
     context_preview: bool = True
+    google_search: bool = True
+    thinking_level: str = "minimal"
 
     @classmethod
     def from_env(cls) -> "GeminiProviderConfig":
@@ -44,11 +46,13 @@ class GeminiProviderConfig:
         return cls(
             selected_provider=provider,
             api_key=api_key,
-            model=os.getenv("FIBI_GEMINI_MODEL", "").strip(),
+            model=os.getenv("FIBI_GEMINI_MODEL", "gemini-3.1-flash-lite").strip(),
             timeout_seconds=_env_int("FIBI_GEMINI_TIMEOUT_SECONDS", 8, 3, 30),
             fallback_to_ollama=_env_bool("FIBI_GEMINI_FALLBACK_TO_OLLAMA", True),
-            streaming=_env_bool("FIBI_GEMINI_STREAMING", False),
+            streaming=_env_bool("FIBI_GEMINI_STREAMING", True),
             context_preview=_env_bool("FIBI_CLOUD_CONTEXT_PREVIEW", True),
+            google_search=_env_bool("FIBI_GEMINI_GOOGLE_SEARCH", True),
+            thinking_level="minimal",
         )
 
 
@@ -76,6 +80,8 @@ class ProviderStatus:
     retry_after_seconds: int = 0
     last_retry_count: int = 0
     candidate_models: tuple[str, ...] = ()
+    google_search_enabled: bool = False
+    thinking_level: str = "minimal"
 
 
 @dataclass(frozen=True, slots=True)

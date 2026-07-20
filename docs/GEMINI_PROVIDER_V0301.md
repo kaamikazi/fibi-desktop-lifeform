@@ -23,20 +23,28 @@ Create or edit the ignored `.env` file in the project root:
 ```dotenv
 GEMINI_API_KEY=YOUR_GEMINI_API_KEY_HERE
 FIBI_PROVIDER=ollama
-FIBI_GEMINI_MODEL=
-FIBI_GEMINI_TIMEOUT_SECONDS=25
+FIBI_GEMINI_MODEL=gemini-3.1-flash-lite
+FIBI_GEMINI_TIMEOUT_SECONDS=8
 FIBI_GEMINI_FALLBACK_TO_OLLAMA=true
-FIBI_GEMINI_STREAMING=false
+FIBI_GEMINI_STREAMING=true
+FIBI_GEMINI_GOOGLE_SEARCH=true
 FIBI_CLOUD_CONTEXT_PREVIEW=true
 ```
 
 Never commit `.env` and never paste the key into Fibi chat, an issue, a support
 bundle, or a public log.
 
-An empty `FIBI_GEMINI_MODEL` makes Fibi list models available to the configured
-key for the current session, keep only text-generation models, prefer a stable
-Flash-class model, and avoid preview/experimental models when a stable option
-exists. A configured model is validated against that list before use.
+`gemini-3.1-flash-lite` is the default low-latency model. Fibi uses minimal
+thinking and streaming. An empty `FIBI_GEMINI_MODEL` makes Fibi list models
+available to the configured key for the current session, keep only
+text-generation models, prefer `gemini-3.1-flash-lite` when available, and
+avoid preview/experimental models when a stable option exists. A configured
+model is validated against that list before use.
+
+Google Search grounding is request-scoped. It is attached only to live-data
+questions after the user explicitly selects Gemini and enables cloud access.
+Normal conversation does not invoke Search. Disable this capability with
+`FIBI_GEMINI_GOOGLE_SEARCH=false`.
 
 ## Select and Inspect
 

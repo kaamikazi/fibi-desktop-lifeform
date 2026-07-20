@@ -36,6 +36,7 @@ class FakeModelsAPI:
         self.list_calls = 0
         self.generate_calls = 0
         self.prompts: list[str] = []
+        self.configs: list[object] = []
         self.models = [
             FakeModel("models/gemini-3.5-flash"),
             FakeModel("models/gemini-3.5-flash-preview"),
@@ -53,6 +54,7 @@ class FakeModelsAPI:
     def generate_content(self, *, model: str, contents: str, config: dict):
         self.generate_calls += 1
         self.prompts.append(contents)
+        self.configs.append(config)
         if self.error:
             raise self.error
         usage = SimpleNamespace(prompt_token_count=5, candidates_token_count=3, total_token_count=8)
@@ -61,6 +63,7 @@ class FakeModelsAPI:
     def generate_content_stream(self, *, model: str, contents: str, config: dict):
         self.generate_calls += 1
         self.prompts.append(contents)
+        self.configs.append(config)
         if self.error:
             raise self.error
         return iter([SimpleNamespace(text="tiny "), SimpleNamespace(text="stream")])
@@ -110,14 +113,30 @@ def provider_with(api: FakeModelsAPI, **values) -> GeminiProvider:
 def test_default_provider_is_ollama(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("FIBI_PROVIDER", raising=False)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("FIBI_GEMINI_MODEL", raising=False)
+    monkeypatch.delenv("FIBI_GEMINI_STREAMING", raising=False)
+    monkeypatch.delenv("FIBI_GEMINI_GOOGLE_SEARCH", raising=False)
     loaded = GeminiProviderConfig.from_env()
     assert loaded.selected_provider == "ollama"
     assert not loaded.api_key
+    assert loaded.model == "gemini-3.1-flash-lite"
+    assert loaded.streaming
+    assert loaded.google_search
 
 
 def test_example_placeholder_is_not_a_configured_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GEMINI_API_KEY", "YOUR_GEMINI_API_KEY_HERE")
     assert not GeminiProviderConfig.from_env().api_key
+
+
+def test_blank_optional_flags_use_documented_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FIBI_GEMINI_STREAMING", "")
+    monkeypatch.setenv("FIBI_GEMINI_GOOGLE_SEARCH", "")
+    loaded = GeminiProviderConfig.from_env()
+    assert loaded.streaming
+    assert loaded.google_search
 
 
 def test_provider_is_lazy_and_missing_key_is_safe() -> None:
@@ -173,6 +192,17 @@ def test_streaming_joins_text() -> None:
     result = provider.generate_reply("sanitized prompt only")
     assert result.text == "tiny stream"
     assert api.generate_calls == 1
+
+
+def test_minimal_thinking_and_search_are_request_scoped() -> None:
+    api = FakeModelsAPI()
+    provider = provider_with(api)
+    provider.generate_reply("normal chat")
+    provider.generate_reply("current weather", use_google_search=True)
+    normal, grounded = api.configs
+    assert normal["thinking_config"] == {"thinking_level": "minimal"}
+    assert "tools" not in normal
+    assert grounded["tools"] == [{"google_search": {}}]
 
 
 def test_empty_response_is_normalized() -> None:

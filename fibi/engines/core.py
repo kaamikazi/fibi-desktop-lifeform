@@ -1099,6 +1099,7 @@ class FibiCore:
         fallback_enabled = bool(status.fallback_enabled and self.privacy.settings.allow_ollama)
         fallback = "Ollama fallback on" if fallback_enabled else "Ollama fallback off"
         preview = "context preview on" if self.privacy.settings.cloud_context_preview else "context preview off"
+        grounding = "Google Search grounding on" if status.google_search_enabled else "Google Search grounding off"
         last_fallback = self.model_router.last_fallback_provider or "none"
         last_error = self.model_router.last_error_category or status.last_error_category or "none"
         retry = (
@@ -1110,7 +1111,8 @@ class FibiCore:
             f"Selected: {selected}. Active: {active}. State: {status.health_state}. Model: {status.model}. "
             f"Environment loaded: {environment_loaded}. Gemini key configured: {configured}. "
             f"{fallback}. Ollama fallback: {self.model_router.last_fallback_status}. "
-            f"Last fallback provider: {last_fallback}. {preview}. "
+            f"Last fallback provider: {last_fallback}. {preview}. {grounding}. "
+            f"Thinking: {status.thinking_level}. Streaming: {'on' if status.streaming_enabled else 'off'}. "
             f"Last retry count: {status.last_retry_count}. {retry}. "
             f"Last provider error category: {last_error}."
         )
@@ -3356,6 +3358,21 @@ class FibiCore:
             return action_response
 
         classified = self.chat_router.classify(user_message)
+        requires_live_data = classified.category == "live_data_unavailable"
+        gemini_search_allowed = bool(
+            requires_live_data
+            and self.model_router.selected_provider() == "gemini"
+            and self.privacy.settings.allow_cloud_model
+            and self.privacy.settings.allow_gemini_api
+            and self.model_router.gemini.config.google_search
+        )
+        if gemini_search_allowed:
+            # Live data stays blocked locally. Explicit Gemini opt-in permits a
+            # sanitized grounded request instead of a made-up current answer.
+            classified.category = "complex_chat"
+            classified.confidence = 1.0
+            classified.should_use_model = True
+            print("GEMINI_GOOGLE_SEARCH_USED: true")
         self._active_fast_category = classified.category
 
         context_ack = self.context_router.maybe_capture(user_message)
@@ -3638,6 +3655,7 @@ class FibiCore:
             fast_category=classified.category,
             local_brain_confidence=getattr(self, "_active_local_brain_confidence", "n/a"),
             local_brain_handled=getattr(self, "_active_local_brain_handled", None),
+            requires_live_data=gemini_search_allowed,
         )
         self.budget.update(model_budget, model_started)
         if model_budget.budget_exceeded and not routed.reply_text.strip():
@@ -3681,6 +3699,7 @@ class FibiCore:
                 fast_category=classified.category,
                 local_brain_confidence=getattr(self, "_active_local_brain_confidence", "n/a"),
                 local_brain_handled=getattr(self, "_active_local_brain_handled", None),
+                requires_live_data=gemini_search_allowed,
             )
             print("RAW AI REPLY: [model response omitted]")
             display, tagged_mood = self._clean_model_reply(retry.reply_text)

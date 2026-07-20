@@ -253,10 +253,11 @@ file; never commit it or paste it into chat:
 ```dotenv
 GEMINI_API_KEY=YOUR_GEMINI_API_KEY_HERE
 FIBI_PROVIDER=ollama
-FIBI_GEMINI_MODEL=
-FIBI_GEMINI_TIMEOUT_SECONDS=25
+FIBI_GEMINI_MODEL=gemini-3.1-flash-lite
+FIBI_GEMINI_TIMEOUT_SECONDS=8
 FIBI_GEMINI_FALLBACK_TO_OLLAMA=true
-FIBI_GEMINI_STREAMING=false
+FIBI_GEMINI_STREAMING=true
+FIBI_GEMINI_GOOGLE_SEARCH=true
 FIBI_CLOUD_CONTEXT_PREVIEW=true
 ```
 
@@ -268,9 +269,15 @@ Restart Fibi, then select the provider explicitly:
 /provider context
 ```
 
-Use `/provider use ollama` to return to local mode. An empty model setting uses
-safe session-only model discovery and prefers a stable Flash-class
-text-generation model available to the configured key.
+Use `/provider use ollama` to return to local mode. Fibi defaults to
+`gemini-3.1-flash-lite` with minimal thinking and streaming for short latency.
+An empty model setting uses safe session-only model discovery and prefers that
+model when available, then another stable Flash-class text model.
+
+Google Search grounding is used only for live-data questions such as current
+weather or news, and only after Gemini and cloud access have both been
+explicitly enabled. Set `FIBI_GEMINI_GOOGLE_SEARCH=false` to keep those
+questions blocked locally.
 
 Temporary Gemini errors use one retry at most. During a short provider
 cooldown, Fibi reports the degraded state clearly and may use Ollama only when
