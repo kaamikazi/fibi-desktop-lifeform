@@ -72,3 +72,4 @@ desktop.ini
 # Repository preparation backups
 .git_empty_backup_*
 .gitignore.pre_build_week_backup*
+README.pre_submission_v030.md
