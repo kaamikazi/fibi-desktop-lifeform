@@ -42,6 +42,10 @@ class ModelRouter:
         self.sanitizer = sanitizer or CloudContextSanitizer()
         configured_mode = self.gemini.config.selected_provider
         self.mode = configured_mode if configured_mode == "gemini" else "auto"
+        self.last_provider_used = ""
+        self.last_fallback_provider = ""
+        self.last_error_category = ""
+        self.last_duration_ms = 0.0
 
     def set_mode(self, mode: str) -> str:
         self.mode = mode if mode in {"auto", "local", "ollama", "nvidia", "gemini"} else "auto"
@@ -172,8 +176,8 @@ class ModelRouter:
     def _fallback(self, start: float, error: str | None = None) -> ModelRouterResult:
         return self._done(start, "fallback", "local-fallback", random.choice(ROUTER_FALLBACKS), False, True, error)
 
-    @staticmethod
     def _done(
+        self,
         start: float,
         provider: str,
         model: str,
@@ -184,6 +188,10 @@ class ModelRouter:
     ) -> ModelRouterResult:
         duration_ms = (time.perf_counter() - start) * 1000
         reply = clean_response(text)
+        self.last_provider_used = provider
+        self.last_fallback_provider = provider if fallback and provider not in {"fallback", "local"} else ""
+        self.last_duration_ms = duration_ms
+        self.last_error_category = self._error_category(error)
         print("ROUTER END")
         print(f"ROUTER DURATION MS: {duration_ms:.1f}")
         print(f"PROVIDER_USED: {provider}")
@@ -192,3 +200,14 @@ class ModelRouter:
         print(f"ROUTE_SELECTED: {'local-direct-fallback' if fallback else 'model-router'}")
         print(f"FINAL_REPLY: {'[cloud response omitted]' if was_cloud else reply}")
         return ModelRouterResult(provider, model, duration_ms, was_cloud, fallback, error, reply)
+
+    def _error_category(self, error: str | None) -> str:
+        if not error:
+            return ""
+        if self.mode == "gemini" and self.gemini.last_error_category:
+            return self.gemini.last_error_category
+        lowered = error.lower()
+        for category in ("authentication", "quota", "timeout", "network", "unavailable_model", "missing_key"):
+            if category.replace("_", " ") in lowered or category in lowered:
+                return category
+        return "provider_error"

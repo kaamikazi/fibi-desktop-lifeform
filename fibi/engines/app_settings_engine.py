@@ -37,6 +37,8 @@ class AppSettingsEngine:
             defaults["beta_mode"] = True
         if defaults["animation_intensity"] not in {"off", "low", "normal"}:
             defaults["animation_intensity"] = "normal"
+        if defaults["language_provider"] not in {"", "ollama", "gemini"}:
+            defaults["language_provider"] = ""
         return AppSettings(**defaults)
 
     def save(self) -> None:
@@ -49,6 +51,8 @@ class AppSettingsEngine:
                 current[key] = value
         if current["animation_intensity"] not in {"off", "low", "normal"}:
             current["animation_intensity"] = "normal"
+        if current["language_provider"] not in {"", "ollama", "gemini"}:
+            current["language_provider"] = ""
         self.settings = AppSettings(**current)
         self.save()
         return self.settings

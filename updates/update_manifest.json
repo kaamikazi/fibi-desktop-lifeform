@@ -1,9 +1,9 @@
 {
-  "latest_version": "0.30.2",
+  "latest_version": "0.30.3",
   "channel": "windows-beta",
   "release_date": "2026-07-20",
-  "release_notes": "Fibi v0.30.2 polishes the demo UI with responsive layout, larger character rendering, compact navigation, and a safe provider badge.",
-  "artifact": "Fibi_Chubi_v0.30.2_windows_beta.zip",
+  "release_notes": "Fibi v0.30.3 narrows canned conversation routes, loads development environment settings from the project root, repairs provider diagnostics and Settings readability, and adds fast Edge-only voice control.",
+  "artifact": "Fibi_Chubi_v0.30.3_windows_beta.zip",
   "download_url": "",
   "sha256": "",
   "required": false,

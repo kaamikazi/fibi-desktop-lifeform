@@ -17,7 +17,8 @@
     "save_full_check_output": true,
     "auto_suggest_check_after_patch": true,
     "auto_run_check_after_patch": false,
-    "beta_mode": true
+    "beta_mode": true,
+    "language_provider": ""
   },
   "privacy_settings": {
     "allow_clipboard_observation": false,

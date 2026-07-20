@@ -13,7 +13,7 @@ GOODBYE = ("bye", "goodbye", "see you", "later fibi", "gn", "good night")
 SUCCESS = ("it worked", "fixed", "done", "passed", "success", "solved", "finally")
 FRUSTRATION = ("bug", "crash", "failed", "broken", "nothing works", "i quit", "hate this")
 TINY_STATUS = ("are you there", "you there", "what are you doing", "still there", "you alive")
-SOCIAL_CHECKINS = (
+SOCIAL_CHECKINS = {
     "how are you",
     "how are you doing",
     "how are u",
@@ -23,7 +23,7 @@ SOCIAL_CHECKINS = (
     "what are you doing",
     "still there",
     "you alive",
-)
+}
 AFFECTION = ("cute", "good fibi", "pat pat", "pet", "boop")
 DATE_QUESTIONS = {
     "what's the date",
@@ -109,32 +109,55 @@ class FastResponseClassifier:
             return FastResponseCategory("local_utility", 1.0, False)
         if any(phrase in lowered for phrase in MEMORY_QUESTIONS):
             return FastResponseCategory("memory_command", 0.95, False)
-        if any(phrase in lowered for phrase in THANKS):
+        if self._matches_short_local_intent(lowered, THANKS):
             return FastResponseCategory("thanks", 0.95, False)
-        if any(phrase in lowered for phrase in GOODBYE):
+        if self._matches_short_local_intent(lowered, GOODBYE):
             return FastResponseCategory("goodbye", 0.95, False)
-        if any(phrase in lowered for phrase in SUCCESS):
+        if self._matches_short_local_intent(lowered, SUCCESS):
             return FastResponseCategory("success", 0.9, False)
-        if any(lowered == phrase or lowered.startswith(phrase + " ") for phrase in SOCIAL_CHECKINS):
+        # Only exact, topic-free check-ins may use a local social response.
+        # Added topics such as "how are you feeling today?" need real context.
+        if lowered in SOCIAL_CHECKINS:
             return FastResponseCategory("social_checkin", 0.95, False)
-        if any(phrase in lowered for phrase in TINY_STATUS):
+        if lowered in TINY_STATUS:
             return FastResponseCategory("tiny_status", 0.9, False)
-        if any(phrase in lowered for phrase in AFFECTION):
+        if self._matches_short_local_intent(lowered, AFFECTION):
             return FastResponseCategory("affection_click_like", 0.8, False)
-        if any(lowered.startswith(phrase) for phrase in SIMPLE_PERSONAL_QUESTIONS):
-            return FastResponseCategory("simple_chat", 0.8, False)
         if text.endswith("?"):
             return FastResponseCategory("complex_chat", 0.8, True)
         words = lowered.split()
         if any(re.search(rf"\b{re.escape(term)}\b", lowered) for term in COMPLEX_TERMS):
             return FastResponseCategory("complex_chat", 0.8, True)
-        if any(phrase in lowered for phrase in FRUSTRATION):
+        if len(words) <= 4 and any(phrase in lowered for phrase in FRUSTRATION):
             return FastResponseCategory("frustration", 0.9, False)
         if len(words) > 4:
             return FastResponseCategory("complex_chat", 0.7, True)
         if len(words) <= 4:
-            return FastResponseCategory("simple_chat", 0.65, False)
+            # Unknown direct chat is low confidence. The micro-brain may opt in,
+            # otherwise the model router gets the message.
+            return FastResponseCategory("simple_chat", 0.55, True)
         return FastResponseCategory("complex_chat", 0.7, True)
+
+    def escalation_reason(self, user_message: str, category: FastResponseCategory | None = None) -> str:
+        """Return a safe reason category without including the user's prompt."""
+
+        classified = category or self.classify(user_message)
+        if classified.category == "complex_chat":
+            normalized = self.normalize_text(user_message)
+            if user_message.rstrip().endswith("?"):
+                return "content question requires model context"
+            if any(re.search(rf"\b{re.escape(term)}\b", normalized) for term in COMPLEX_TERMS):
+                return "reasoning or content term detected"
+            return "multi-word conversational request"
+        if classified.category == "simple_chat" and classified.should_use_model:
+            return "uncertain local intent prefers model router"
+        return "deterministic local intent"
+
+    @staticmethod
+    def _matches_short_local_intent(text: str, phrases: tuple[str, ...]) -> bool:
+        if len(text.split()) > 4:
+            return False
+        return any(text == phrase or text == f"{phrase} fibi" for phrase in phrases)
 
     @staticmethod
     def normalize_text(text: str) -> str:

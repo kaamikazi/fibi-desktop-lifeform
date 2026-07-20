@@ -70,10 +70,23 @@ The goal is not to claim consciousness or autonomy. The goal is a more durable d
 - A state-driven badge shows local, Gemini, or fallback mode without exposing
   credentials or provider context.
 
+### Conversation and Gemini Hotfix
+
+- v0.30.3 keeps exact greetings instant while routing meaningful questions,
+  explanations, planning, and contextual conversation through the selected
+  model provider.
+- Local social replies rotate recent lines and escalate when the deterministic
+  response set is exhausted.
+- Development launches find the project-root `.env` independently of the
+  shell's current directory. Packaged builds continue to rely on external
+  configuration and never bundle `.env`.
+- Settings now uses readable tabs, grouped provider controls, scrollable pages,
+  and an explicit Edge-only or Edge-plus-RVC voice selector.
+
 ### Local Beta Packaging
 
 - Windows portable build tooling exists.
-- A verified portable ZIP and executable were produced locally for v0.30.2.
+- A verified portable ZIP and executable were produced locally for v0.30.3.
 - Generated binaries and `dist/` are intentionally not committed to this source repository.
 - Inno Setup was not installed in the verified environment, so no installer EXE was produced.
 
@@ -127,6 +140,7 @@ Read more:
 - [Optional Gemini Provider](docs/GEMINI_PROVIDER_V0301.md)
 - [Cloud Context Privacy](docs/CLOUD_CONTEXT_PRIVACY_V0301.md)
 - [Demo UI Polish](docs/DEMO_UI_POLISH_V0302.md)
+- [Conversation and Gemini Hotfix](docs/CONVERSATION_GEMINI_HOTFIX_V0303.md)
 
 ## Safety Model
 
@@ -248,7 +262,7 @@ policies and limits before use.
 
 ### B. Portable Windows Beta
 
-The verified v0.30.2 portable ZIP and executable were generated locally by the release tooling:
+The verified v0.30.3 portable ZIP and executable were generated locally by the release tooling:
 
 ```powershell
 python tools\build_windows.py --clean --zip
@@ -279,18 +293,20 @@ Starter commands:
 /health gui
 /provider status
 /provider privacy
+/voice rvc off
+/voice status
 ```
 
 For the larger command list, see [docs/COMMANDS_V029.md](docs/COMMANDS_V029.md).
 
 ## Testing and Verification
 
-Verified v0.30.2 results:
+Verified v0.30.3 results:
 
-- 162 tests passed
+- 190 tests passed
 - 3 warnings
 - GUI smoke passed
-- v0.29, v0.30, mocked v0.30.1 provider, and v0.30.2 UI smoke tests passed
+- v0.29, v0.30, mocked v0.30.1 provider, v0.30.2 UI, and v0.30.3 routing/Settings smoke tests passed
 - Windows build verification passed
 - checksum generation passed
 - ZIP privacy scan passed

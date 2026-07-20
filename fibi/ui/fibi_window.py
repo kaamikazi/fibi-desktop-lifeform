@@ -28,6 +28,8 @@ from PyQt6.QtWidgets import (
     QDialog,
     QCheckBox,
     QComboBox,
+    QFrame,
+    QGroupBox,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -35,6 +37,7 @@ from PyQt6.QtWidgets import (
     QListWidget,
     QMenu,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QSystemTrayIcon,
     QTabWidget,
@@ -520,113 +523,252 @@ class FibiNotebookDialog(QDialog):
 
 
 class FibiSettingsDialog(QDialog):
-    """Small local settings panel."""
+    """Readable, responsive local settings panel."""
 
     def __init__(self, core: FibiCore, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.core = core
         self.setWindowTitle("Fibi settings")
-        self.setMinimumSize(520, 420)
+        self.setMinimumSize(600, 500)
+        self.resize(720, 620)
         self._build_ui()
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
-        tabs = QTabWidget()
-        layout.addWidget(tabs)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(12)
 
+        heading = QLabel("Fibi settings")
+        heading.setObjectName("settingsHeading")
+        subtitle = QLabel("Local controls for Fibi's presence, privacy, language, and voice.")
+        subtitle.setObjectName("settingsSubtitle")
+        subtitle.setWordWrap(True)
+        layout.addWidget(heading)
+        layout.addWidget(subtitle)
+
+        self.tabs = QTabWidget()
+        self.tabs.setObjectName("settingsTabs")
+        self.tabs.setUsesScrollButtons(True)
+        layout.addWidget(self.tabs, 1)
         self.checks: dict[str, QCheckBox] = {}
 
-        def add_tab(name: str, items: list[tuple[str, str, bool]]) -> None:
+        def add_tab(
+            name: str,
+            section_title: str,
+            items: list[tuple[str, str, bool]],
+        ) -> QVBoxLayout:
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.Shape.NoFrame)
             page = QWidget()
+            page.setObjectName(f"{name.lower()}SettingsPage")
             page_layout = QVBoxLayout(page)
+            page_layout.setContentsMargins(12, 14, 12, 14)
+            page_layout.setSpacing(14)
+            group = QGroupBox(section_title)
+            group_layout = QVBoxLayout(group)
+            group_layout.setContentsMargins(14, 18, 14, 14)
+            group_layout.setSpacing(10)
             for key, label, checked in items:
                 box = QCheckBox(label)
                 box.setChecked(bool(checked))
+                box.setObjectName(f"setting_{key}")
                 self.checks[key] = box
-                page_layout.addWidget(box)
+                group_layout.addWidget(box)
+            page_layout.addWidget(group)
             page_layout.addStretch(1)
-            tabs.addTab(page, name)
+            scroll.setWidget(page)
+            self.tabs.addTab(scroll, name)
+            return page_layout
 
         settings = self.core.app_settings.settings
         privacy = self.core.privacy.settings
-        add_tab("General", [
-            ("start_minimized", "start minimized", settings.start_minimized),
-            ("minimize_to_tray", "minimize to tray", settings.minimize_to_tray),
-            ("always_on_top", "always on top", settings.always_on_top),
-            ("click_through_mode", "click-through mode", settings.click_through_mode),
+        general_layout = add_tab("General", "Desktop presence", [
+            ("start_minimized", "Start minimized", settings.start_minimized),
+            ("minimize_to_tray", "Minimize to tray", settings.minimize_to_tray),
+            ("always_on_top", "Always on top", settings.always_on_top),
+            ("click_through_mode", "Click-through mode", settings.click_through_mode),
         ])
-        add_tab("Behavior", [
-            ("allow_idle_bubbles", "idle bubbles", privacy.allow_idle_bubbles),
-            ("quiet_mode", "quiet mode", self.core.boundary.quiet.active),
-            ("bubble_typing_effect", "bubble typing effect", settings.bubble_typing_effect),
-            ("allow_project_checks", "project checks", settings.allow_project_checks),
-            ("speak_utility_replies", "utility TTS", self.core.tts_manager.speak_utility_replies),
+        setup = QPushButton("First-run setup")
+        setup.setObjectName("firstRunSetupButton")
+        setup.clicked.connect(self._open_setup)
+        general_layout.insertWidget(general_layout.count() - 1, setup)
+
+        add_tab("Behavior", "Presence and behavior", [
+            ("allow_idle_bubbles", "Idle bubbles", privacy.allow_idle_bubbles),
+            ("quiet_mode", "Quiet mode", self.core.boundary.quiet.active),
+            ("bubble_typing_effect", "Bubble typing effect", settings.bubble_typing_effect),
+            ("allow_project_checks", "Project checks", settings.allow_project_checks),
+            ("speak_utility_replies", "Speak utility replies", self.core.tts_manager.speak_utility_replies),
         ])
-        add_tab("Privacy", [
-            ("allow_memory_learning", "memory learning", privacy.allow_memory_learning),
-            ("allow_journal", "journal", privacy.allow_journal),
-            ("allow_dreams", "dreams", privacy.allow_dreams),
-            ("allow_inner_thoughts", "inner thoughts", privacy.allow_inner_thoughts),
-            ("allow_foreground_app_observation", "foreground app observation", privacy.allow_foreground_app_observation),
-            ("allow_window_title_observation", "window title observation", privacy.allow_window_title_observation),
-            ("allow_clipboard_observation", "clipboard observation", privacy.allow_clipboard_observation),
+        add_tab("Privacy", "Local privacy controls", [
+            ("allow_memory_learning", "Memory learning", privacy.allow_memory_learning),
+            ("allow_journal", "Journal", privacy.allow_journal),
+            ("allow_dreams", "Dreams", privacy.allow_dreams),
+            ("allow_inner_thoughts", "Inner thoughts", privacy.allow_inner_thoughts),
+            ("allow_foreground_app_observation", "Foreground app observation", privacy.allow_foreground_app_observation),
+            ("allow_window_title_observation", "Window title observation", privacy.allow_window_title_observation),
+            ("allow_clipboard_observation", "Clipboard observation", privacy.allow_clipboard_observation),
         ])
-        add_tab("Models", [
+
+        models_layout = add_tab("Models", "Model permissions", [
             ("allow_ollama", "Ollama enabled", privacy.allow_ollama),
-            ("allow_cloud_model", "cloud enabled", privacy.allow_cloud_model),
+            ("allow_cloud_model", "Cloud language model enabled", privacy.allow_cloud_model),
             ("allow_nvidia_api", "NVIDIA/API provider enabled", privacy.allow_nvidia_api),
             ("allow_gemini_api", "Gemini API enabled", privacy.allow_gemini_api),
         ])
-        add_tab("Voice", [
-            ("allow_tts", "TTS voice", privacy.allow_tts),
-            ("allow_voice_input", "voice input", self.core.voice_settings.settings.allow_voice_input),
-            ("rvc_enabled", "RVC voice skin", self.core.voice_skin_settings.settings.rvc_enabled),
-            ("allow_sounds", "sounds", privacy.allow_sounds),
-        ])
-        add_tab("Actions", [
-            ("allow_desktop_actions", "safe actions", self.core.action_settings.settings.allow_desktop_actions),
-        ])
-        add_tab("Performance", [
-            ("performance_debug_logs", "performance debug logs", settings.performance_debug_logs),
-        ])
-
+        provider_group = QGroupBox("Language Provider")
+        provider_group.setObjectName("providerSection")
+        provider_layout = QVBoxLayout(provider_group)
+        provider_layout.setContentsMargins(14, 18, 14, 14)
+        provider_layout.setSpacing(10)
         provider_row = QHBoxLayout()
-        provider_row.addWidget(QLabel("Language provider"))
+        provider_row.addWidget(QLabel("Provider"))
         self.provider_combo = QComboBox()
+        self.provider_combo.setObjectName("languageProviderCombo")
         self.provider_combo.addItem("LOCAL - Ollama", "ollama")
         self.provider_combo.addItem("CLOUD - Gemini", "gemini")
         selected = self.core.model_router.selected_provider()
         self.provider_combo.setCurrentIndex(1 if selected == "gemini" else 0)
-        provider_row.addWidget(self.provider_combo)
-        layout.addLayout(provider_row)
-
+        provider_row.addWidget(self.provider_combo, 1)
+        provider_layout.addLayout(provider_row)
+        self.provider_status_badge = QLabel(self._provider_status_heading())
+        self.provider_status_badge.setObjectName("providerStatusBadge")
+        self.provider_status_badge.setWordWrap(True)
+        provider_layout.addWidget(self.provider_status_badge)
         self.cloud_label = QLabel(
-            f"Gemini API key: {self._key_status()}\n{self.core.get_provider_status()}"
+            f"Gemini API key: {'configured' if self.core.model_router.gemini.is_configured() else 'not configured'}\n"
+            + self.core.get_provider_status()
         )
+        self.cloud_label.setObjectName("providerStatusDetails")
         self.cloud_label.setWordWrap(True)
-        layout.addWidget(self.cloud_label)
+        self.cloud_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        provider_layout.addWidget(self.cloud_label)
+        provider_buttons = QHBoxLayout()
+        self.provider_privacy_button = QPushButton("Cloud privacy")
+        self.provider_privacy_button.clicked.connect(self._show_provider_privacy)
+        self.provider_test_button = QPushButton("Test provider")
+        self.provider_test_button.clicked.connect(self._test_provider)
+        provider_buttons.addWidget(self.provider_privacy_button)
+        provider_buttons.addWidget(self.provider_test_button)
+        provider_buttons.addStretch(1)
+        provider_layout.addLayout(provider_buttons)
+        models_layout.insertWidget(models_layout.count() - 1, provider_group)
+
+        voice_layout = add_tab("Voice", "Voice basics", [
+            ("allow_tts", "TTS voice", privacy.allow_tts),
+            ("allow_voice_input", "Voice input", self.core.voice_settings.settings.allow_voice_input),
+            ("allow_sounds", "Sounds", privacy.allow_sounds),
+        ])
+        processing_group = QGroupBox("Voice processing")
+        processing_group.setObjectName("voiceProcessingSection")
+        processing_layout = QVBoxLayout(processing_group)
+        self.voice_processing_combo = QComboBox()
+        self.voice_processing_combo.setObjectName("voiceProcessingCombo")
+        self.voice_processing_combo.addItem("Edge TTS only", "edge")
+        self.voice_processing_combo.addItem("Edge TTS + RVC", "rvc")
+        rvc_enabled = bool(
+            self.core.voice_skin_settings.settings.allow_rvc_voice_skin
+            and self.core.voice_skin_settings.settings.rvc_enabled
+        )
+        self.voice_processing_combo.setCurrentIndex(1 if rvc_enabled else 0)
+        processing_layout.addWidget(self.voice_processing_combo)
+        self.rvc_warning_label = QLabel("RVC may add significant processing time on CPU.")
+        self.rvc_warning_label.setObjectName("rvcWarning")
+        self.rvc_warning_label.setWordWrap(True)
+        processing_layout.addWidget(self.rvc_warning_label)
+        voice_layout.insertWidget(voice_layout.count() - 1, processing_group)
+
+        add_tab("Actions", "Desktop actions", [
+            ("allow_desktop_actions", "Safe actions", self.core.action_settings.settings.allow_desktop_actions),
+        ])
+        add_tab("Performance", "Diagnostics", [
+            ("performance_debug_logs", "Performance debug logs", settings.performance_debug_logs),
+        ])
 
         buttons = QHBoxLayout()
-        save = QPushButton("save")
+        buttons.addStretch(1)
+        close = QPushButton("Close")
+        close.setObjectName("settingsCloseButton")
+        close.clicked.connect(self.reject)
+        save = QPushButton("Save")
+        save.setObjectName("settingsSaveButton")
+        save.setDefault(True)
         save.clicked.connect(self._save)
+        buttons.addWidget(close)
         buttons.addWidget(save)
-        setup = QPushButton("first-run setup")
-        setup.clicked.connect(self._open_setup)
-        buttons.addWidget(setup)
-        provider_test = QPushButton("test provider")
-        provider_test.clicked.connect(self._test_provider)
-        buttons.addWidget(provider_test)
-        privacy = QPushButton("cloud privacy")
-        privacy.clicked.connect(self._show_provider_privacy)
-        buttons.addWidget(privacy)
         layout.addLayout(buttons)
+        self.setStyleSheet(self._settings_stylesheet())
 
-        self.setStyleSheet("QDialog { background: #fff7fc; } QCheckBox, QLabel { color: #39243f; font: 9pt 'Segoe UI'; }")
+    def _provider_status_heading(self) -> str:
+        configured = self.core.model_router.gemini.is_configured()
+        selected = self.core.model_router.selected_provider()
+        provider = "CLOUD - Gemini" if selected == "gemini" else "LOCAL - Ollama"
+        return f"{provider} | Gemini {'configured' if configured else 'not configured'}"
 
     @staticmethod
-    def _key_status() -> str:
-        import os
-        return "configured" if os.getenv("GEMINI_API_KEY", "").strip() else "not configured"
+    def _settings_stylesheet() -> str:
+        return """
+            QDialog { background: #fff7fc; color: #35213d; }
+            QLabel, QCheckBox, QComboBox, QPushButton, QGroupBox {
+                color: #35213d; font: 9pt 'Segoe UI';
+            }
+            QLabel#settingsHeading { color: #3d2448; font: bold 15pt 'Segoe UI'; }
+            QLabel#settingsSubtitle { color: #684c72; }
+            QTabWidget::pane {
+                border: 1px solid #d9bed6; border-radius: 7px;
+                background: #fffafd; top: -1px;
+            }
+            QTabBar::tab {
+                background: #ead8e9; color: #4b3055;
+                border: 1px solid #cfb1cb; padding: 8px 7px;
+                min-width: 44px; font: 8pt 'Segoe UI';
+            }
+            QTabBar::tab:selected {
+                background: #7a4f8d; color: #ffffff;
+                border-color: #69407c; font-weight: bold;
+            }
+            QTabBar::tab:hover:!selected { background: #f3e5f1; }
+            QScrollArea, QScrollArea > QWidget > QWidget { background: #fffafd; }
+            QGroupBox {
+                background: #ffffff; border: 1px solid #ddc5db;
+                border-radius: 7px; margin-top: 10px; font-weight: bold;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin; left: 10px; padding: 0 5px;
+                color: #563460; background: #fffafd;
+            }
+            QCheckBox { spacing: 8px; min-height: 24px; }
+            QCheckBox::indicator { width: 17px; height: 17px; }
+            QComboBox {
+                background: #ffffff; border: 1px solid #b996b8;
+                border-radius: 6px; padding: 6px 9px; min-height: 20px;
+            }
+            QLabel#providerStatusBadge {
+                background: #f1e7f5; color: #4c2d5b;
+                border: 1px solid #c9acd2; border-radius: 6px;
+                padding: 7px 9px; font-weight: bold;
+            }
+            QLabel#providerStatusDetails { color: #523b5b; }
+            QLabel#rvcWarning {
+                background: #fff4d9; color: #654814;
+                border: 1px solid #dfc174; border-radius: 6px; padding: 7px;
+            }
+            QPushButton {
+                background: #f2e5f0; color: #412849;
+                border: 1px solid #bd9abd; border-radius: 6px;
+                padding: 7px 12px; min-height: 22px;
+            }
+            QPushButton:hover { background: #ead5e8; }
+            QPushButton:pressed { background: #dfc3dc; }
+            QPushButton:disabled {
+                background: #eee9ed; color: #8a7b88; border-color: #d4cbd2;
+            }
+            QPushButton#settingsSaveButton {
+                background: #765087; color: #ffffff;
+                border-color: #654075; font-weight: bold;
+            }
+        """
 
     def _save(self) -> None:
         self.core.update_settings(
@@ -640,7 +782,8 @@ class FibiSettingsDialog(QDialog):
         )
         self.core.tts_manager.speak_utility_replies = self.checks["speak_utility_replies"].isChecked()
         self.core.update_voice_settings(allow_voice_input=self.checks["allow_voice_input"].isChecked())
-        self.core.voice_skin_settings.update(rvc_enabled=self.checks["rvc_enabled"].isChecked())
+        use_rvc = self.voice_processing_combo.currentData() == "rvc"
+        self.core.voice_skin_settings.update(allow_rvc_voice_skin=use_rvc, rvc_enabled=use_rvc)
         self.core.action_settings.update(allow_desktop_actions=self.checks["allow_desktop_actions"].isChecked())
         self.core.privacy.update(
             allow_idle_bubbles=self.checks["allow_idle_bubbles"].isChecked(),
@@ -675,7 +818,8 @@ class FibiSettingsDialog(QDialog):
             self.accept()
             parent._ask_fibi("/provider test")
             return
-        self.cloud_label.setText("Run /provider test from Fibi chat.")
+        result = self.core.handle_local_command("/provider test")
+        self.cloud_label.setText(result.response.display_text if result.response else "Provider test unavailable.")
 
     def _show_provider_privacy(self) -> None:
         result = self.core.handle_local_command("/provider privacy")

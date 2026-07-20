@@ -19,7 +19,7 @@ def test_inno_script_exists_and_excludes_sensitive_paths() -> None:
     text = script.read_text(encoding="utf-8").lower()
     for forbidden in ["data\\*", "logs\\*", "voice_models\\*", "*.env", "*.pth", "*.index", "*.db"]:
         assert forbidden in text
-    assert "fibi_chubi_setup_v0.30.2" in text
+    assert "fibi_chubi_setup_v0.30.3" in text
 
 
 def test_install_status_data_folder_and_reset_commands() -> None:
@@ -59,9 +59,9 @@ def test_release_manifest_and_checksums_generated(monkeypatch) -> None:
         release.mkdir(parents=True)
         exe = release / "Fibi Chubi.exe"
         exe.write_text("exe", encoding="utf-8")
-        zip_path = dist / "Fibi_Chubi_v0.30.2_windows_beta.zip"
+        zip_path = dist / "Fibi_Chubi_v0.30.3_windows_beta.zip"
         zip_path.write_text("zip", encoding="utf-8")
-        installer = dist / "installers" / "Fibi_Chubi_Setup_v0.30.2.exe"
+        installer = dist / "installers" / "Fibi_Chubi_Setup_v0.30.3.exe"
         installer.parent.mkdir()
         installer.write_text("installer", encoding="utf-8")
 
@@ -69,15 +69,15 @@ def test_release_manifest_and_checksums_generated(monkeypatch) -> None:
         monkeypatch.setattr(build_windows, "RELEASE_DIR", release)
         manifest_path = build_windows.write_release_manifest(zip_path, installer)
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        assert manifest["app_version"] == "0.30.2"
+        assert manifest["app_version"] == "0.30.3"
         assert manifest["checksums"]["zip_sha256"]
 
         monkeypatch.setattr(make_checksums, "DIST_DIR", dist)
-        monkeypatch.setattr(make_checksums, "CHECKSUM_PATH", dist / "checksums_v0.30.2.txt")
+        monkeypatch.setattr(make_checksums, "CHECKSUM_PATH", dist / "checksums_v0.30.3.txt")
         monkeypatch.setattr(make_checksums, "INSTALLER_PATH", installer)
         monkeypatch.setattr(make_checksums, "release_zip_path", lambda: zip_path)
         checksums = make_checksums.generate_checksums()
-        assert "Fibi_Chubi_v0.30.2_windows_beta.zip" in checksums.read_text(encoding="utf-8")
+        assert "Fibi_Chubi_v0.30.3_windows_beta.zip" in checksums.read_text(encoding="utf-8")
 
 
 def test_build_installer_handles_missing_inno_gracefully(monkeypatch) -> None:
@@ -87,7 +87,7 @@ def test_build_installer_handles_missing_inno_gracefully(monkeypatch) -> None:
         release = root / "dist" / "Fibi Chubi"
         release.mkdir(parents=True)
         (release / "Fibi Chubi.exe").write_text("exe", encoding="utf-8")
-        installer = root / "dist" / "installers" / "Fibi_Chubi_Setup_v0.30.2.exe"
+        installer = root / "dist" / "installers" / "Fibi_Chubi_Setup_v0.30.3.exe"
 
         monkeypatch.setattr(build_installer, "RELEASE_DIR", release)
         monkeypatch.setattr(build_installer, "INSTALLER_PATH", installer)
@@ -97,7 +97,7 @@ def test_build_installer_handles_missing_inno_gracefully(monkeypatch) -> None:
         monkeypatch.setattr(build_installer, "generate_checksums", lambda: root / "checksums.txt")
 
         assert build_installer.build_installer(skip_build=False) == 0
-        reports = list((root / "data" / "reports").glob("installer_build_report_v0.30.2.json"))
+        reports = list((root / "data" / "reports").glob("installer_build_report_v0.30.3.json"))
         assert reports
         assert json.loads(reports[0].read_text(encoding="utf-8"))["status"] == "inno_missing"
 

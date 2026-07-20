@@ -1078,3 +1078,13 @@ python app.py
 - Added release notes, reset/uninstall docs, and v0.24 QA results.
 - Renamed release zip target to `Fibi_Chubi_v0.24.0_windows_beta.zip`.
 - Added v0.24 unit and smoke tests.
+# Fibi v0.30.3
+
+- Narrowed local conversation fast paths to deterministic greetings and
+  high-confidence short social checks.
+- Added repeat-aware micro-replies and model escalation diagnostics.
+- Added root-aware, secret-safe Gemini environment loading and provider status.
+- Repaired Settings tab contrast, grouping, scrolling, and voice processing
+  controls.
+- Added mock-only routing/provider tests and responsive Settings smoke coverage.
+- Updated Windows beta packaging metadata to `0.30.3`.

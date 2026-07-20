@@ -6,6 +6,7 @@ import random
 import re
 import time
 import logging
+import os
 import uuid
 from dataclasses import asdict
 from datetime import datetime
@@ -116,7 +117,7 @@ from fibi.engines.work_session_engine import WorkSessionEngine
 from fibi.engines.work_step_runner import WorkStepRunner
 from fibi.engines.desktop_action_engine import DesktopActionEngine
 from fibi.version import detailed_version_line, version_line
-from fibi.engines.types import ActionIntent, CheckFixPlan, CreatureReaction, FibiResponse, LocalCommandResult, Memory, MemoryCategory, MemoryDeleteRequest, MemoryEditRequest, MemoryExportRequest, Observation, PendingAction, PendingFixSuggestion, ProjectCheckRequest, VoiceTranscriptionResult, WorkSessionPlan, WorkSessionStep, WorkflowRun
+from fibi.engines.types import ActionIntent, CheckFixPlan, CreatureReaction, FibiResponse, LocalCommandResult, LocalMicroBrainResult, Memory, MemoryCategory, MemoryDeleteRequest, MemoryEditRequest, MemoryExportRequest, Observation, PendingAction, PendingFixSuggestion, ProjectCheckRequest, VoiceTranscriptionResult, WorkSessionPlan, WorkSessionStep, WorkflowRun
 from fibi.rag.rag_memory_service import RAGMemoryServiceFacade
 from fibi.runtime_paths import logs_dir, is_packaged, runtime_info
 from fibi.logging_config import mask_secrets
@@ -253,6 +254,8 @@ class FibiCore:
         self.tts_manager = TtsManager()
         self.warmup = warmup or WarmupEngine()
         self.app_settings = app_settings or AppSettingsEngine()
+        if self.app_settings.settings.language_provider and not os.getenv("FIBI_PROVIDER", "").strip():
+            self.model_router.set_mode(self.app_settings.settings.language_provider)
         self.autostart = autostart or AutostartEngine()
         self.data_health = data_health or DataHealthEngine(
             self.memory.database_path,
@@ -494,6 +497,18 @@ class FibiCore:
             f"voice input: {'on' if self.voice_settings.settings.allow_voice_input else 'off'}",
             f"rvc: {'on' if voice_skin.get('rvc_enabled') else 'off'}",
             self.get_model_status(),
+            "conversation routing: "
+            f"{self.route_decisions.last_decision.route_name}; "
+            f"fast category {self.route_decisions.last_decision.fast_category or 'none'}; "
+            f"model router {'yes' if self.route_decisions.last_decision.model_router_allowed else 'no'}",
+            "provider runtime: "
+            f"selected {self.model_router.selected_provider()}; "
+            f"active {self.model_router.last_provider_used or 'none'}; "
+            f"fallback {self.model_router.last_fallback_provider or 'none'}",
+            "latency: "
+            f"text {self.model_router.last_duration_ms:.0f}ms; "
+            f"tts {self.health.performance.tts_latency_ms:.0f}ms; "
+            f"rvc {getattr(self.rvc_voice_skin, 'last_duration_ms', 0.0):.0f}ms",
             self._memory_health_short_line(),
             f"commands: {len(self.command_registry.all())} mapped.",
             self.workflow_recipes.status_line(),
@@ -1071,15 +1086,23 @@ class FibiCore:
         return f"model {selected}. {cloud}. {self.health.status_line()}"
 
     def get_provider_status(self) -> str:
+        from fibi.settings import ENVIRONMENT_STATUS
+
         selected = self.model_router.selected_provider()
         status = self.model_router.gemini.status(selected=selected == "gemini")
-        configured = "configured" if status.configured else "not configured"
-        fallback = "Ollama fallback on" if status.fallback_enabled else "Ollama fallback off"
-        streaming = "streaming on" if status.streaming_enabled else "streaming off"
+        active = self.model_router.last_provider_used or selected
+        configured = "yes" if status.configured else "no"
+        environment_loaded = "yes" if ENVIRONMENT_STATUS.loaded else "no"
+        fallback_enabled = bool(status.fallback_enabled and self.privacy.settings.allow_ollama)
+        fallback = "Ollama fallback on" if fallback_enabled else "Ollama fallback off"
         preview = "context preview on" if self.privacy.settings.cloud_context_preview else "context preview off"
+        last_fallback = self.model_router.last_fallback_provider or "none"
+        last_error = self.model_router.last_error_category or status.last_error or "none"
         return (
-            f"provider: {selected}. Gemini {configured}. model: {status.model}. "
-            f"{fallback}. {streaming}. {preview}. status: {status.availability}."
+            f"Selected: {selected}. Active: {active}. Model: {status.model}. "
+            f"Environment loaded: {environment_loaded}. Gemini key configured: {configured}. "
+            f"{fallback}. Last fallback provider: {last_fallback}. {preview}. "
+            f"Last provider error category: {last_error}. Status: {status.availability}."
         )
 
     def get_privacy_status(self) -> str:
@@ -1207,7 +1230,12 @@ class FibiCore:
 
     def _fast_greeting_response(self, user_message: str) -> FibiResponse:
         start = time.perf_counter()
-        result = self.chat_router.local_reply("greeting", mood=self.life.mood, relationship=self.relationship.state)
+        result = self.chat_router.local_reply(
+            "greeting",
+            mood=self.life.mood,
+            relationship=self.relationship.state,
+            excluded_texts=self.repetition.state.spoken_lines[-5:],
+        )
         line = result.text or random.choice(FAST_GREETING_LINES)
         self.life.last_user_message = user_message
         self.life.interaction_count += 1
@@ -1217,6 +1245,8 @@ class FibiCore:
         self.life.mark_seen(save=False)
         self.life.save_state()
         self.relationship.cool_down_annoyance(kind=True)
+        self.repetition.remember(line=line, category="greeting")
+        self._save_repetition()
         self._journal_record(
             "fast_greeting",
             self.life.mood,
@@ -1257,9 +1287,22 @@ class FibiCore:
             "high",
         )
 
-    def _micro_response(self, category: str, user_message: str, time_of_day: str = "") -> FibiResponse:
+    def _micro_response(
+        self,
+        category: str,
+        user_message: str,
+        time_of_day: str = "",
+        result: LocalMicroBrainResult | None = None,
+    ) -> FibiResponse:
         start = time.perf_counter()
-        result = self.micro_brain.reply(category, self.life.mood, time_of_day, self.relationship.state, user_message)
+        result = result or self.micro_brain.reply(
+            category,
+            self.life.mood,
+            time_of_day,
+            self.relationship.state,
+            user_message,
+            self.repetition.state.spoken_lines[-5:],
+        )
         self.life.last_user_message = user_message
         self.life.interaction_count += 1
         self.life.total_interactions += 1
@@ -1267,6 +1310,9 @@ class FibiCore:
         self.life.next_idle_reaction_time = self.life._next_idle_time()
         self.life.mark_seen(save=False)
         self.life.save_state()
+        if result.text:
+            self.repetition.remember(line=result.text, category=category)
+            self._save_repetition()
         elapsed = (time.perf_counter() - start) * 1000
         print("FAST_PATH_USED: true")
         print("PROVIDER_USED: local")
@@ -1339,13 +1385,21 @@ class FibiCore:
             )
         if lowered == "/provider use ollama":
             self.model_router.set_mode("ollama")
+            self.app_settings.update(language_provider="ollama")
             self.privacy.update(allow_ollama=True, allow_cloud_model=False, allow_gemini_api=False)
             return self._local_response("back to LOCAL - Ollama. cloud off.", "happy", tts_priority="silent")
         if lowered == "/provider use gemini":
             if not self.model_router.gemini.is_configured():
                 self.privacy.update(allow_gemini_api=False)
+                missing_key_help = (
+                    "Gemini is not configured. Packaged Fibi uses an external GEMINI_API_KEY "
+                    "or explicit FIBI_ENV_FILE; .env is never bundled."
+                    if is_packaged()
+                    else "Gemini is not configured. I checked the project-root .env. "
+                    "Add GEMINI_API_KEY there, restart Fibi, and never paste it into chat."
+                )
                 return self._local_response(
-                    "Gemini is not configured. add GEMINI_API_KEY to your local ignored .env, then restart. never paste it into chat.",
+                    missing_key_help,
                     "sleepy",
                     tts_priority="silent",
                 )
@@ -1357,6 +1411,7 @@ class FibiCore:
                     tts_priority="silent",
                 )
             self.model_router.set_mode("gemini")
+            self.app_settings.update(language_provider="gemini")
             self.privacy.update(
                 allow_cloud_model=True,
                 allow_gemini_api=True,
@@ -1839,6 +1894,16 @@ class FibiCore:
         return LocalCommandResult(False)
 
     def _handle_voice_command(self, text: str, lowered: str) -> LocalCommandResult:
+        if lowered in {"/voice rvc off", "/voice skin off"}:
+            self.voice_skin_settings.update(rvc_enabled=False, allow_rvc_voice_skin=False)
+            return self._local_response("Edge TTS only. voice skin off.", "sleepy", tts_priority="silent")
+        if lowered in {"/voice rvc on", "/voice skin on confirm"}:
+            if lowered == "/voice rvc on":
+                return self._local_response(
+                    "RVC can be slow on CPU. use /voice skin on confirm to enable it.",
+                    "thinking",
+                    tts_priority="silent",
+                )
         skin = self._handle_voice_skin_command(text, lowered)
         if skin.handled:
             return skin
@@ -3297,27 +3362,33 @@ class FibiCore:
             )
             return self._local_response(line or random.choice(["okay.", "quiet mode.", "i'll be small."]), "sleepy").response
 
-        local_categories = {
-            "thanks",
-            "goodbye",
-            "success",
-            "frustration",
-            "tiny_status",
-            "social_checkin",
-            "affection_click_like",
-        }
         if self.chat_router.is_local_fast_category(classified.category):
-            return self._micro_response(classified.category, user_message)
+            local_probe = self.chat_router.local_reply(
+                classified.category,
+                mood=self.life.mood,
+                relationship=self.relationship.state,
+                user_message=user_message,
+                excluded_texts=self.repetition.state.spoken_lines[-5:],
+            )
+            self._active_local_brain_confidence = local_probe.confidence
+            self._active_local_brain_handled = local_probe.handled
+            if local_probe.handled and local_probe.confidence == "high" and local_probe.text:
+                return self._micro_response(classified.category, user_message, result=local_probe)
+            classified.should_use_model = True
+            print("FAST_ESCALATION_REASON: local response repetition guard exhausted")
         if classified.category == "simple_chat":
             local_probe = self.chat_router.local_reply(
                 "simple_chat",
                 mood=self.life.mood,
                 relationship=self.relationship.state,
+                user_message=user_message,
+                excluded_texts=self.repetition.state.spoken_lines[-5:],
             )
             self._active_local_brain_confidence = local_probe.confidence
             self._active_local_brain_handled = local_probe.handled
             if local_probe.handled and local_probe.confidence == "high" and local_probe.text:
-                return self._micro_response(classified.category, user_message)
+                return self._micro_response(classified.category, user_message, result=local_probe)
+            print(f"FAST_ESCALATION_REASON: {self.classifier.escalation_reason(user_message, classified)}")
 
         wake_reaction = self._wake_if_needed("message")
         self.life.set_thinking(True)
@@ -3496,6 +3567,8 @@ class FibiCore:
             )
 
         prompt = self.personality.build_prompt(context, user_message)
+        if classified.category == "complex_chat":
+            print(f"FAST_ESCALATION_REASON: {self.classifier.escalation_reason(user_message, classified)}")
         model_budget, model_started = self.budget.start("complex_chat")
         decision = self.route_decisions.decide(
             user_message,

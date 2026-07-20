@@ -1368,6 +1368,7 @@ export interface AppSettings {
   saveFullCheckOutput: boolean;
   autoSuggestCheckAfterPatch: boolean;
   autoRunCheckAfterPatch: boolean;
+  languageProvider: "" | "ollama" | "gemini";
 }
 
 export interface TrayAction {

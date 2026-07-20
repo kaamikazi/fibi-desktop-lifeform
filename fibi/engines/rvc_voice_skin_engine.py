@@ -44,6 +44,7 @@ class RvcVoiceSkinEngine:
         self.temp_dir.mkdir(parents=True, exist_ok=True)
         self.last_rvc_error = ""
         self.last_fallback_reason = "not run yet"
+        self.last_duration_ms = 0.0
 
     def backend_available(self, settings: VoiceSkinSettings) -> bool:
         """Check whether the selected backend can be reached without converting."""
@@ -99,12 +100,17 @@ class RvcVoiceSkinEngine:
         started = time.perf_counter()
         validation = self.validate(settings)
         if not validation.ok:
-            return RvcConversionResult(False, None, validation.message, True, self._elapsed(started))
+            result = RvcConversionResult(False, None, validation.message, True, self._elapsed(started))
+            self.last_duration_ms = result.duration_ms
+            return result
         if settings.rvc_backend == "rvc_python":
-            return self._convert_rvc_python(base_audio_path, settings, started)
-        if settings.rvc_backend == "rvc_webui_api":
-            return self._convert_webui(base_audio_path, settings, started)
-        return RvcConversionResult(False, None, "backend disabled", True, self._elapsed(started))
+            result = self._convert_rvc_python(base_audio_path, settings, started)
+        elif settings.rvc_backend == "rvc_webui_api":
+            result = self._convert_webui(base_audio_path, settings, started)
+        else:
+            result = RvcConversionResult(False, None, "backend disabled", True, self._elapsed(started))
+        self.last_duration_ms = result.duration_ms
+        return result
 
     def _convert_rvc_python(self, base_audio_path: Path, settings: VoiceSkinSettings, started: float) -> RvcConversionResult:
         try:

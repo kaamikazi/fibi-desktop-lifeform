@@ -28,6 +28,7 @@ SMOKE_TESTS = [
     "tests/smoke_v030_memory_review.py",
     "tests/smoke_v0301_gemini_provider.py",
     "tests/smoke_v0302_demo_ui.py",
+    "tests/smoke_v0303_routing_and_settings.py",
 ]
 
 
@@ -95,11 +96,11 @@ def zip_release() -> Path:
 
 
 def release_zip_path() -> Path:
-    return DIST_DIR / "Fibi_Chubi_v0.30.2_windows_beta.zip"
+    return DIST_DIR / "Fibi_Chubi_v0.30.3_windows_beta.zip"
 
 
 def release_manifest_path() -> Path:
-    return DIST_DIR / "release_manifest_v0.30.2.json"
+    return DIST_DIR / "release_manifest_v0.30.3.json"
 
 
 def _sha256(path: Path) -> str:
@@ -117,7 +118,7 @@ def write_release_manifest(zip_path: Path | None = None, installer_path: Path | 
 
     exe = RELEASE_DIR / "Fibi Chubi.exe"
     zip_path = zip_path or release_zip_path()
-    installer_path = installer_path or (DIST_DIR / "installers" / "Fibi_Chubi_Setup_v0.30.2.exe")
+    installer_path = installer_path or (DIST_DIR / "installers" / "Fibi_Chubi_Setup_v0.30.3.exe")
     docs = [
         "README.md",
         "docs/RELEASE_NOTES_V024.md",
@@ -137,10 +138,11 @@ def write_release_manifest(zip_path: Path | None = None, installer_path: Path | 
         "docs/GEMINI_PROVIDER_V0301.md",
         "docs/CLOUD_CONTEXT_PRIVACY_V0301.md",
         "docs/DEMO_UI_POLISH_V0302.md",
+        "docs/CONVERSATION_GEMINI_HOTFIX_V0303.md",
         "packaging/installer_notes.md",
     ]
     manifest = {
-        "app_version": "0.30.2",
+        "app_version": "0.30.3",
         "build_date": datetime.now().astimezone().isoformat(timespec="seconds"),
         "zip_path": str(zip_path),
         "installer_path": str(installer_path) if installer_path.exists() else "",
@@ -149,7 +151,7 @@ def write_release_manifest(zip_path: Path | None = None, installer_path: Path | 
         "installer_size": installer_path.stat().st_size if installer_path.exists() else 0,
         "included_docs": docs,
         "excluded_sensitive_folders": ["data", "logs", "reports", "exports", "voice_cache", "tts_temp", "voice_models"],
-        "test_summary": "compileall, smoke_v022 through smoke_v0302, verify_release",
+        "test_summary": "compileall, smoke_v022 through smoke_v0303, verify_release",
         "checksums": {
             "zip_sha256": _sha256(zip_path) if zip_path.exists() else "",
             "installer_sha256": _sha256(installer_path) if installer_path.exists() else "",

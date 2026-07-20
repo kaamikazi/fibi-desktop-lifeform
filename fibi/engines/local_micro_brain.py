@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+from collections.abc import Collection
 
 from fibi.engines.types import LocalMicroBrainResult, RelationshipState
 
@@ -54,6 +55,7 @@ class LocalMicroBrain:
         time_of_day: str = "",
         relationship: RelationshipState | None = None,
         user_message: str = "",
+        excluded_texts: Collection[str] = (),
     ) -> LocalMicroBrainResult:
         if category == "social_checkin":
             category = self._social_subcategory(user_message)
@@ -62,6 +64,8 @@ class LocalMicroBrain:
         if category in {"simple_chat", "unknown"}:
             return LocalMicroBrainResult(None, mood, category, "local", False, "low", False)
         lines = list(self.LINES.get(category, self.LINES["unknown"]))
+        excluded = {line.strip().lower() for line in excluded_texts}
+        lines = [line for line in lines if line.strip().lower() not in excluded]
         if not lines:
             return LocalMicroBrainResult(None, mood, category, "local", False, "low", False)
         if relationship and relationship.user_prefers_quiet:

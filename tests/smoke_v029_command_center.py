@@ -63,7 +63,7 @@ def run() -> None:
         )
         assert "GUI_SMOKE_OK" in gui.stdout or "GUI_SMOKE_SKIPPED_OR_FAILED" in gui.stdout
 
-        assert release_zip_path().name == "Fibi_Chubi_v0.30.2_windows_beta.zip"
+        assert release_zip_path().name == "Fibi_Chubi_v0.30.3_windows_beta.zip"
 
     print("Fibi v0.29 command center smoke tests passed.")
 

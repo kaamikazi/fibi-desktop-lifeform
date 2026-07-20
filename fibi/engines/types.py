@@ -1691,6 +1691,7 @@ class AppSettings:
     auto_suggest_check_after_patch: bool = True
     auto_run_check_after_patch: bool = False
     beta_mode: bool = False
+    language_provider: str = ""
 
 
 @dataclass(slots=True)

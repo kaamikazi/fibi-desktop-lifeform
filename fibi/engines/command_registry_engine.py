@@ -137,6 +137,7 @@ def _commands() -> list[CommandMetadata]:
         CommandMetadata("/startup diagnostics", [], "health", "Show startup diagnostics.", ["/startup diagnostics"], False, "safe", "release_health", True),
         CommandMetadata("/self test", [], "health", "Run Fibi's local self-test.", ["/self test"], False, "low", "release_health", True),
         CommandMetadata("/voice status", [], "voice", "Show voice input/output status.", ["/voice status"], False, "safe", "voice_output", True),
+        CommandMetadata("/voice rvc off", [], "voice", "Use Edge TTS directly without RVC conversion.", ["/voice rvc off"], False, "safe", "voice_output", True),
         CommandMetadata("/voice output on", ["/voice on"], "voice", "Enable TTS output.", ["/voice output on"], False, "low", "voice_output", True),
         CommandMetadata("/voice output off", ["/voice off"], "voice", "Disable TTS output.", ["/voice output off"], False, "safe", "voice_output", True),
         CommandMetadata("/listen", [], "voice", "Start push-to-talk voice input if enabled.", ["/listen"], False, "low", "voice_input", True),

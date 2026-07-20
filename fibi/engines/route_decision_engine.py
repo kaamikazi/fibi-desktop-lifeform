@@ -77,10 +77,23 @@ class RouteDecisionEngine:
         category = fast_category.category if fast_category else "unknown"
         if category == "greeting":
             return self._remember(RouteDecision("local_greeting", True, False, False, "greeting", 300, fast_category=category))
-        if category in {"thanks", "goodbye", "success", "frustration", "tiny_status", "social_checkin", "affection_click_like"}:
+        if category in {"thanks", "goodbye", "success", "frustration", "tiny_status", "affection_click_like"}:
             return self._remember(RouteDecision("local_micro_brain", True, False, False, category, 500, fast_category=category))
         if local_micro_brain_result and local_micro_brain_result.handled and local_micro_brain_result.confidence == "high":
             return self._remember(RouteDecision("local_micro_brain", True, False, False, "confident local micro-brain", 500, fast_category=category))
+        if category in {"social_checkin", "simple_chat"}:
+            route = "model_complex_chat" if provider_allowed else "local_fallback"
+            return self._remember(
+                RouteDecision(
+                    route,
+                    provider_allowed,
+                    provider_allowed,
+                    False,
+                    "uncertain local conversation escalated",
+                    7000,
+                    fast_category=category,
+                )
+            )
         if category == "local_utility":
             return self._remember(RouteDecision("local_utility", True, False, True, "utility classifier", 300, fast_category=category))
         if category == "complex_chat":

@@ -13,7 +13,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SPEC_PATH = PROJECT_ROOT / "packaging" / "inno" / "FibiChubi.iss"
 RELEASE_DIR = PROJECT_ROOT / "dist" / "Fibi Chubi"
-INSTALLER_PATH = PROJECT_ROOT / "dist" / "installers" / "Fibi_Chubi_Setup_v0.30.2.exe"
+INSTALLER_PATH = PROJECT_ROOT / "dist" / "installers" / "Fibi_Chubi_Setup_v0.30.3.exe"
 
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -39,7 +39,7 @@ def find_iscc() -> Path | None:
 
 
 def write_report(status: str, details: dict[str, object]) -> Path:
-    target = reports_dir() / "installer_build_report_v0.30.2.json"
+    target = reports_dir() / "installer_build_report_v0.30.3.json"
     payload = {
         "status": status,
         "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),

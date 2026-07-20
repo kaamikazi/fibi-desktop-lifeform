@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection
+
 from fibi.engines.fast_response_classifier import FastResponseClassifier
 from fibi.engines.local_micro_brain import LocalMicroBrain
 from fibi.engines.types import FastResponseCategory, LocalMicroBrainResult, RelationshipState
@@ -44,6 +46,7 @@ class ChatRouter:
         time_of_day: str = "",
         relationship: RelationshipState | None = None,
         user_message: str = "",
+        excluded_texts: Collection[str] = (),
     ) -> LocalMicroBrainResult:
         return self.micro_brain.reply(
             category,
@@ -51,6 +54,7 @@ class ChatRouter:
             time_of_day=time_of_day,
             relationship=relationship,
             user_message=user_message,
+            excluded_texts=excluded_texts,
         )
 
     @staticmethod
