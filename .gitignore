@@ -29,6 +29,7 @@ venv/
 
 # Runtime/private Fibi data
 data/
+demo_runtime/
 voice_cache/
 temp_voice/
 temp_audio/

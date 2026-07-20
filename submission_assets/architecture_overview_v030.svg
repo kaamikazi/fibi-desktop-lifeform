@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" role="img" aria-labelledby="title desc">
+  <title id="title">Fibi v0.30 architecture overview</title>
+  <desc id="desc">Local-first Fibi architecture showing user input flowing through desktop presence, router, local identity, memory, safety, workflows, and replaceable language provider.</desc>
+  <rect width="1920" height="1080" fill="#f8fafc"/>
+  <style>
+    .box { fill: #ffffff; stroke: #334155; stroke-width: 3; rx: 18; }
+    .main { fill: #fef3c7; stroke: #92400e; stroke-width: 4; rx: 22; }
+    .local { fill: #ecfeff; stroke: #155e75; stroke-width: 3; rx: 18; }
+    .provider { fill: #f5f3ff; stroke: #6d28d9; stroke-width: 3; rx: 18; }
+    .text { font-family: Arial, Helvetica, sans-serif; fill: #0f172a; font-size: 34px; font-weight: 700; }
+    .small { font-family: Arial, Helvetica, sans-serif; fill: #334155; font-size: 24px; font-weight: 400; }
+    .label { font-family: Arial, Helvetica, sans-serif; fill: #475569; font-size: 22px; font-weight: 400; }
+    .arrow { stroke: #334155; stroke-width: 5; fill: none; marker-end: url(#arrowhead); }
+  </style>
+  <defs>
+    <marker id="arrowhead" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M 0 0 L 12 6 L 0 12 z" fill="#334155"/>
+    </marker>
+  </defs>
+
+  <text x="960" y="92" text-anchor="middle" class="text" font-size="44">Fibi: Local-First Desktop Lifeform</text>
+  <text x="960" y="132" text-anchor="middle" class="small">The model can change. Her identity and history remain. The user owns the notebook.</text>
+
+  <rect x="710" y="175" width="500" height="96" class="box"/>
+  <text x="960" y="235" text-anchor="middle" class="text">User</text>
+
+  <path d="M 960 274 L 960 333" class="arrow"/>
+  <rect x="610" y="340" width="700" height="120" class="main"/>
+  <text x="960" y="394" text-anchor="middle" class="text">Fibi Desktop Presence</text>
+  <text x="960" y="429" text-anchor="middle" class="small">PyQt6 window, mood, chat bubble, voice, visible controls</text>
+
+  <path d="M 960 464 L 960 523" class="arrow"/>
+  <rect x="610" y="530" width="700" height="120" class="main"/>
+  <text x="960" y="584" text-anchor="middle" class="text">Router / Orchestrator</text>
+  <text x="960" y="619" text-anchor="middle" class="small">Local commands first, safety gates, model last</text>
+
+  <path d="M 960 654 L 960 704" class="arrow"/>
+  <path d="M 960 704 L 240 704 L 240 748" class="arrow"/>
+  <path d="M 960 704 L 600 704 L 600 748" class="arrow"/>
+  <path d="M 960 704 L 960 748" class="arrow"/>
+  <path d="M 960 704 L 1320 704 L 1320 748" class="arrow"/>
+  <path d="M 960 704 L 1680 704 L 1680 748" class="arrow"/>
+
+  <rect x="80" y="755" width="320" height="150" class="local"/>
+  <text x="240" y="812" text-anchor="middle" class="text" font-size="28">Identity &amp; Personality</text>
+  <text x="240" y="852" text-anchor="middle" class="small">Mood, habits, voice,</text>
+  <text x="240" y="882" text-anchor="middle" class="small">character rules</text>
+
+  <rect x="440" y="755" width="320" height="150" class="local"/>
+  <text x="600" y="812" text-anchor="middle" class="text" font-size="28">Memory &amp; Consent</text>
+  <text x="600" y="852" text-anchor="middle" class="small">SQLite, RAG, review,</text>
+  <text x="600" y="882" text-anchor="middle" class="small">pause, delete</text>
+
+  <rect x="800" y="755" width="320" height="150" class="local"/>
+  <text x="960" y="812" text-anchor="middle" class="text" font-size="28">Safety &amp; Permissions</text>
+  <text x="960" y="852" text-anchor="middle" class="small">No hidden browsing,</text>
+  <text x="960" y="882" text-anchor="middle" class="small">confirm risky work</text>
+
+  <rect x="1160" y="755" width="320" height="150" class="local"/>
+  <text x="1320" y="812" text-anchor="middle" class="text" font-size="28">Workflows &amp; Tools</text>
+  <text x="1320" y="852" text-anchor="middle" class="small">Guided recipes, checks,</text>
+  <text x="1320" y="882" text-anchor="middle" class="small">manual actions</text>
+
+  <rect x="1520" y="755" width="320" height="150" class="provider"/>
+  <text x="1680" y="812" text-anchor="middle" class="text" font-size="28">Replaceable Language</text>
+  <text x="1680" y="852" text-anchor="middle" class="small">Ollama or other allowed</text>
+  <text x="1680" y="882" text-anchor="middle" class="small">provider, never identity</text>
+
+  <text x="960" y="986" text-anchor="middle" class="label">Priority: Presence &gt; Memory &gt; Personality &gt; Intelligence</text>
+</svg>
