@@ -12,7 +12,7 @@ from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
-from fibi.brain.cleanup import clean_response, is_effectively_empty, remove_mood_tags, tts_safe_text
+from fibi.brain.cleanup import clean_response, extract_expression_markers, is_effectively_empty, remove_mood_tags, tts_safe_text
 from fibi.build_info import APP_VERSION
 from fibi.engines.action_confirmation_engine import ActionConfirmationEngine
 from fibi.engines.action_intent_detector import ActionIntentDetector
@@ -1936,12 +1936,7 @@ class FibiCore:
             self.voice_skin_settings.update(rvc_enabled=False, allow_rvc_voice_skin=False)
             return self._local_response("Edge TTS only. voice skin off.", "sleepy", tts_priority="silent")
         if lowered in {"/voice rvc on", "/voice skin on confirm"}:
-            if lowered == "/voice rvc on":
-                return self._local_response(
-                    "RVC can be slow on CPU. use /voice skin on confirm to enable it.",
-                    "thinking",
-                    tts_priority="silent",
-                )
+            return self._enable_rvc_voice_skin()
         skin = self._handle_voice_skin_command(text, lowered)
         if skin.handled:
             return skin
@@ -1973,9 +1968,7 @@ class FibiCore:
         if lowered == "/voice skin status":
             return self._local_response(self._voice_skin_status_text(), "thinking", tts_priority="silent")
         if lowered == "/voice skin on confirm":
-            self.voice_skin_settings.update(allow_rvc_voice_skin=True, rvc_enabled=True)
-            validation = self.rvc_voice_skin.validate(self.voice_skin_settings.settings)
-            return self._local_response("voice skin ready." if validation.ok else f"voice skin tripped. {validation.message}.", "thinking")
+            return self._enable_rvc_voice_skin()
         if lowered == "/voice skin off":
             self.voice_skin_settings.update(rvc_enabled=False, allow_rvc_voice_skin=False)
             return self._local_response("voice skin off.", "sleepy", tts_priority="silent")
@@ -2011,6 +2004,25 @@ class FibiCore:
         if lowered == "/voice cache status":
             return self._local_response(self.voice_cache.status_line(), "thinking", tts_priority="silent")
         return LocalCommandResult(False)
+
+    def _enable_rvc_voice_skin(self) -> LocalCommandResult:
+        """Enable optional RVC explicitly while retaining Edge TTS fallback."""
+
+        backend = self.voice_skin_settings.settings.rvc_backend
+        if backend == "disabled":
+            backend = "rvc_python"
+        self.voice_skin_settings.update(
+            allow_rvc_voice_skin=True,
+            rvc_enabled=True,
+            rvc_backend=backend,
+        )
+        validation = self.rvc_voice_skin.validate(self.voice_skin_settings.settings)
+        message = (
+            "voice skin ready. RVC on. processing voice may take a while."
+            if validation.ok
+            else f"voice skin tripped. RVC is on but unavailable right now. Edge TTS will be used. {validation.message}."
+        )
+        return self._local_response(message, "thinking", tts_priority="silent")
 
     def _voice_skin_status_text(self) -> str:
         status = self.rvc_voice_skin.status(self.voice_skin_settings.settings)
@@ -3728,14 +3740,11 @@ class FibiCore:
             related_project,
         )
 
-    @staticmethod
-    def _clean_model_reply(raw: str) -> tuple[str, str]:
-        has_mood_tag = bool(re.search(r"\[(idle|happy|thinking|sleepy|angry|talking)\]", raw, re.IGNORECASE))
-        after_mood, mood = remove_mood_tags(raw)
+    def _clean_model_reply(self, raw: str) -> tuple[str, str]:
         print("AFTER MOOD CLEAN: [model response omitted]")
-        display = clean_response(after_mood)
+        display, expression = self.response_pipeline.clean_model_reply(raw)
         print("CLEANED DISPLAY: [model response omitted]")
-        return display, mood if has_mood_tag else ""
+        return display, expression
 
     def _finish(
         self,
@@ -3748,7 +3757,9 @@ class FibiCore:
         related_project: str | None,
     ) -> FibiResponse:
         router_was_used = bool(getattr(self, "_model_router_invoked", False))
-        display = clean_response(display)
+        marker_result = extract_expression_markers(display)
+        display = clean_response(marker_result.text)
+        expression = marker_result.expression or expression
         decision = self.social.filter_reaction(
             display,
             self.relationship.state,
@@ -3762,9 +3773,10 @@ class FibiCore:
             display = decision.text
         elif decision.action == "silence":
             display = "okay."
-        tts = tts_safe_text(display)
+        provider_error_reply = bool(used_fallback and router_was_used)
+        tts = "" if provider_error_reply else tts_safe_text(display)
         print(f"TTS TEXT: {'[model response omitted]' if router_was_used else tts}")
-        tts_priority = self.tts_manager.priority_for(model_used)
+        tts_priority = "silent" if provider_error_reply else self.tts_manager.priority_for(model_used)
         print(f"TTS_PRIORITY: {tts_priority}")
         previous_mood = self.life.mood
         semantic_mood = self.life.update_mood(
@@ -3773,7 +3785,7 @@ class FibiCore:
             reply_text=display,
             time_of_day=observation.time_of_day,
         )
-        final_expression = self._expression_for(expression, semantic_mood)
+        final_expression = "idle" if provider_error_reply else self._expression_for(expression, semantic_mood)
         self.life.set_thinking(False)
         self.life.remember_interaction(user_message, semantic_mood)
         self._remember_conversation_rag("fibi", display, mood=final_expression)

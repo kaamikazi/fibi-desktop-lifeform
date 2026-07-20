@@ -62,6 +62,7 @@ class FibiBridge(QObject):
     """Moves messages safely from worker threads back to the PyQt UI thread."""
 
     response_ready = pyqtSignal(object)
+    voice_preparing = pyqtSignal(bool)
     speaking_started = pyqtSignal()
     speaking_finished = pyqtSignal(bool)
 
@@ -287,6 +288,7 @@ class SpeechBubble(QWidget):
         self._typing_index = 0
         self._active = True
         self._speaking = False
+        self._voice_status = ""
         self._auto_hide_ms = 0
         self.typing_timer = QTimer(self)
         self.typing_timer.timeout.connect(self._type_next)
@@ -328,6 +330,13 @@ class SpeechBubble(QWidget):
             self.hide_timer.stop()
         elif self._auto_hide_ms > 0:
             self.hide_timer.start(self._auto_hide_ms)
+        self.update()
+
+    def set_voice_status(self, status: str) -> None:
+        """Show a small non-blocking voice state beneath the reply."""
+
+        self._voice_status = status.strip()
+        self.update()
 
     def _type_next(self) -> None:
         self._typing_index += 1
@@ -366,11 +375,20 @@ class SpeechBubble(QWidget):
 
         painter.setPen(QColor(58, 35, 70))
         painter.setFont(QFont("Segoe UI", 9))
+        text_rect = bubble_rect.adjusted(12, 9, -12, -22 if self._voice_status else -9)
         painter.drawText(
-            bubble_rect.adjusted(12, 9, -12, -9),
+            text_rect,
             Qt.AlignmentFlag.AlignVCenter | Qt.TextFlag.TextWordWrap,
             self.text,
         )
+        if self._voice_status:
+            painter.setPen(QColor(142, 92, 132))
+            painter.setFont(QFont("Segoe UI", 7))
+            painter.drawText(
+                bubble_rect.adjusted(12, 0, -12, -7),
+                Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignRight,
+                self._voice_status,
+            )
 
 
 class FibiNotebookDialog(QDialog):
@@ -1439,6 +1457,7 @@ class FibiWindow(QWidget):
 
     def _connect_signals(self) -> None:
         self.bridge.response_ready.connect(self._on_response)
+        self.bridge.voice_preparing.connect(self._on_voice_preparing)
         self.bridge.speaking_started.connect(self._on_speaking_started)
         self.bridge.speaking_finished.connect(self._on_speaking_finished)
 
@@ -1682,7 +1701,7 @@ class FibiWindow(QWidget):
             self._set_session_chip()
             self.bubble.show_text(text, self.core.timing.bubble_options(text, timing.typing_style))
             self._play_sound_event("success") if result.motion and result.motion.motion_name == "celebration_pop" else self._play_sound("message")
-            self._speak_in_background(text, result.mood, result.model_used, result.tts_priority)
+            self._speak_in_background(result.tts_text, result.mood, result.model_used, result.tts_priority)
 
         if timing.pre_delay_ms:
             if timing.show_thinking_bubble and timing.thinking_line:
@@ -1692,73 +1711,92 @@ class FibiWindow(QWidget):
             display()
 
     def _speak_in_background(self, text: str, expression_after: str, model_used: str = "", tts_priority: str = "") -> None:
+        from fibi.brain.cleanup import tts_safe_text
+        from fibi.voice.speak import is_voice_available
+
+        decision = self.core.tts_manager.decide(
+            model_used,
+            text,
+            self.core.privacy.settings.allow_tts,
+            tts_priority,
+        )
+        print(f"TTS_PRIORITY: {decision.priority}")
+        if not decision.should_speak:
+            print(f"TTS_SKIPPED_REASON: {decision.skipped_reason}")
+            return
+        if not is_voice_available():
+            print("TTS_SKIPPED_REASON: unavailable")
+            return
+
+        speech_text = tts_safe_text(text)
+        if not speech_text:
+            print("TTS_SKIPPED_REASON: empty")
+            return
+
+        skin_settings = self.core.voice_skin_settings.settings
+        rvc_enabled = bool(skin_settings.allow_rvc_voice_skin and skin_settings.rvc_enabled)
+        self.core.tts_manager.mark_started()
+        self.bridge.voice_preparing.emit(rvc_enabled)
+
         def worker() -> None:
-            from fibi.brain.cleanup import tts_safe_text
-            from fibi.voice.speak import is_voice_available, play_audio, prepare_voice_output
+            from fibi.voice.speak import play_audio, prepare_voice_output
 
-            decision = self.core.tts_manager.decide(
-                model_used,
-                text,
-                self.core.privacy.settings.allow_tts,
-                tts_priority,
-            )
-            print(f"TTS_PRIORITY: {decision.priority}")
-            if not decision.should_speak:
-                print(f"TTS_SKIPPED_REASON: {decision.skipped_reason}")
-                return
-            if not is_voice_available():
-                print("TTS_SKIPPED_REASON: unavailable")
-                return
-
-            speech_text = tts_safe_text(text)
-            if not speech_text:
-                print("TTS_SKIPPED_REASON: empty")
-                return
-
-            skin_settings = self.core.voice_skin_settings.settings
             started = time.perf_counter()
             print("EDGE_TTS_START")
-            self.core.tts_manager.mark_started()
-            self.bridge.speaking_started.emit()
             base_path = ""
             spoke = False
             try:
-                edge_started = time.perf_counter()
-                voice_output = prepare_voice_output(
-                    speech_text,
-                    skin_settings,
-                    self.core.rvc_voice_skin,
-                    self.core.voice_cache,
-                )
-                if voice_output.base_audio_path:
-                    base_path = str(voice_output.base_audio_path)
-                if not voice_output.edge_tts_ok or not voice_output.final_audio_path:
-                    print("TTS_SKIPPED_REASON: edge_tts_failed")
-                else:
-                    print(f"EDGE_TTS_DURATION_MS: {(time.perf_counter() - edge_started) * 1000:.1f}")
-                    print(f"FINAL_AUDIO_PLAYED_PATH: {voice_output.final_audio_path}")
-                    spoke = play_audio(voice_output.final_audio_path)
+                try:
+                    edge_started = time.perf_counter()
+                    voice_output = prepare_voice_output(
+                        speech_text,
+                        skin_settings,
+                        self.core.rvc_voice_skin,
+                        self.core.voice_cache,
+                    )
+                    if voice_output.base_audio_path:
+                        base_path = str(voice_output.base_audio_path)
+                    if not voice_output.edge_tts_ok or not voice_output.final_audio_path:
+                        print("TTS_SKIPPED_REASON: edge_tts_failed")
+                    else:
+                        print(f"EDGE_TTS_DURATION_MS: {(time.perf_counter() - edge_started) * 1000:.1f}")
+                        print(f"FINAL_AUDIO_PLAYED_PATH: {voice_output.final_audio_path}")
+                        self.bridge.speaking_started.emit()
+                        spoke = play_audio(voice_output.final_audio_path)
+                except Exception as error:
+                    print(f"TTS_SKIPPED_REASON: {type(error).__name__}")
             finally:
                 duration_ms = (time.perf_counter() - started) * 1000
                 if base_path:
                     with suppress(OSError):
                         Path(base_path).unlink()
-            print(f"TTS_DURATION_MS: {duration_ms:.1f}")
-            self.core.tts_manager.mark_finished(duration_ms)
-            self.core.health.record_tts(duration_ms)
-            self.bridge.speaking_finished.emit(spoke)
+                print(f"TTS_DURATION_MS: {duration_ms:.1f}")
+                self.core.tts_manager.mark_finished(duration_ms)
+                self.core.health.record_tts(duration_ms)
+                self.bridge.speaking_finished.emit(spoke)
 
-        self._expression_after_speech = expression_after if expression_after in ("happy", "idle") else "happy"
+        self._expression_after_speech = (
+            expression_after
+            if expression_after in EXPRESSIONS and expression_after != "talking"
+            else "idle"
+        )
         threading.Thread(target=worker, daemon=True).start()
+
+    def _on_voice_preparing(self, rvc_enabled: bool) -> None:
+        self.life.set_speaking(True)
+        self.bubble.set_speaking(True)
+        self.bubble.set_voice_status("processing voice..." if rvc_enabled else "speaking...")
 
     def _on_speaking_started(self) -> None:
         self.life.set_speaking(True)
         self.bubble.set_speaking(True)
+        self.bubble.set_voice_status("speaking...")
         self.sprite.set_talking(True)
 
     def _on_speaking_finished(self, spoke: bool) -> None:
         self.life.set_speaking(False)
         self.bubble.set_speaking(False)
+        self.bubble.set_voice_status("")
         self.sprite.set_talking(False)
         next_mood = getattr(self, "_expression_after_speech", "happy") if spoke else "idle"
         self.sprite.set_expression(next_mood, force=True)

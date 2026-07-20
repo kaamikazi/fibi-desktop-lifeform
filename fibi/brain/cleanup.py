@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 import string
+from dataclasses import dataclass
 from functools import lru_cache
 
 
@@ -41,6 +42,95 @@ FALLBACK_EMOJI_PHRASES = {
     "yellow heart",
 }
 
+ACTION_MARKER_EXPRESSIONS = {
+    "yawn": "sleepy",
+    "yawns": "sleepy",
+    "smile": "happy",
+    "smiles": "happy",
+    "giggle": "happy",
+    "giggles": "happy",
+    "sigh": "thinking",
+    "sighs": "thinking",
+    "blink": "idle",
+    "blinks": "idle",
+    "looks away": "thinking",
+    "sleepy": "sleepy",
+    "excited": "happy",
+}
+ACTION_MARKER_PATTERN = re.compile(
+    r"\*\s*(yawns?|smiles?|giggles?|sighs?|blinks?|looks\s+away|sleepy|excited)\s*\*",
+    re.IGNORECASE,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class ExpressionMarkerResult:
+    """Visible text and animation metadata extracted from model stage directions."""
+
+    text: str
+    expression: str = ""
+    markers: tuple[str, ...] = ()
+
+
+def extract_expression_markers(text: str) -> ExpressionMarkerResult:
+    """Remove supported ``*action*`` markers and select an expression.
+
+    Only Fibi's small action vocabulary is stripped. Other asterisk text is
+    left alone so ordinary emphasis is not mistaken for an animation command.
+    """
+
+    source = text or ""
+    markers = tuple(
+        re.sub(r"\s+", " ", match.group(1).lower()).strip()
+        for match in ACTION_MARKER_PATTERN.finditer(source)
+    )
+    cleaned = ACTION_MARKER_PATTERN.sub(" ", source)
+    cleaned = _remove_duplicated_action_prefix(cleaned, markers)
+    cleaned = re.sub(r"\s+([,.!?])", r"\1", cleaned)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
+
+    # Sleepy actions should win over short happy/idle cues when a model emits
+    # more than one stage direction in a single short reply.
+    expressions = [ACTION_MARKER_EXPRESSIONS[marker] for marker in markers]
+    expression = next(
+        (candidate for candidate in ("sleepy", "thinking", "happy", "idle") if candidate in expressions),
+        "",
+    )
+    return ExpressionMarkerResult(cleaned, expression, markers)
+
+
+def _remove_duplicated_action_prefix(text: str, markers: tuple[str, ...]) -> str:
+    """Drop only a repeated leading stage direction, never natural prose."""
+
+    cleaned = text.strip()
+    for marker in markers:
+        words = {
+            "yawn": ("yawn", "yawns"),
+            "yawns": ("yawn", "yawns"),
+            "smile": ("smile", "smiles"),
+            "smiles": ("smile", "smiles"),
+            "giggle": ("giggle", "giggles"),
+            "giggles": ("giggle", "giggles"),
+            "sigh": ("sigh", "sighs"),
+            "sighs": ("sigh", "sighs"),
+            "blink": ("blink", "blinks"),
+            "blinks": ("blink", "blinks"),
+            "looks away": ("looks away",),
+            "sleepy": ("sleepy",),
+            "excited": ("excited",),
+        }.get(marker, ())
+        if not words:
+            continue
+        alternatives = "|".join(re.escape(word) for word in words)
+        cleaned = re.sub(
+            rf"^(?:{alternatives})\s*(?:[.!,:;-]+\s*|(?=(?:i|we|you|she|he|it|this|that)\b))",
+            "",
+            cleaned,
+            count=1,
+            flags=re.IGNORECASE,
+        ).strip()
+    return cleaned
+
 
 def _name_to_phrase(name: str) -> str:
     """Turn ':sleepy_face:' or 'sleepy-face' into 'sleepy face'."""
@@ -70,10 +160,14 @@ def _emoji_name_phrases() -> tuple[str, ...]:
     for data in emoji.EMOJI_DATA.values():
         english_name = data.get("en", "")
         if english_name:
-            phrases.add(_name_to_phrase(english_name))
+            phrase = _name_to_phrase(english_name)
+            if len(phrase.split()) > 1:
+                phrases.add(phrase)
 
         for alias in data.get("alias", []):
-            phrases.add(_name_to_phrase(alias))
+            phrase = _name_to_phrase(alias)
+            if len(phrase.split()) > 1:
+                phrases.add(phrase)
 
     return tuple(sorted(phrases, key=len, reverse=True))
 
@@ -113,7 +207,9 @@ def clean_response(text: str) -> str:
     cleaned = re.sub(r"\s+([)\]}])", r"\1", cleaned)
     cleaned = re.sub(r"\(\s*\)|\[\s*\]|\{\s*\}", "", cleaned)
     cleaned = re.sub(r"\s{2,}", " ", cleaned)
-    cleaned = re.sub(r"^[\s,.;:!?-]+|[\s,.;:!?-]+$", "", cleaned)
+    # Remove punctuation stranded at the beginning by cleanup, but preserve
+    # the model's intentional sentence-ending punctuation.
+    cleaned = re.sub(r"^[\s,.;:!?-]+", "", cleaned)
 
     return cleaned.strip()
 
@@ -145,6 +241,7 @@ def tts_safe_text(display_text: str) -> str:
     Display text can be just an emoji, but most TTS voices handle a tiny word
     better than a standalone symbol.
     """
+    display_text = extract_expression_markers(display_text).text
     if not display_text.strip():
         return ""
 

@@ -132,3 +132,17 @@ def test_demo_data_path_remains_isolated(fibi_window: FibiWindow, tmp_path: Path
     database_path = Path(fibi_window.core.memory.database_path).resolve()
     assert database_path.is_relative_to(tmp_path.resolve())
     assert not database_path.is_relative_to((Path(__file__).resolve().parents[1] / "data").resolve())
+
+
+def test_voice_preparation_indicator_does_not_replace_expression(fibi_window: FibiWindow) -> None:
+    fibi_window.sprite.set_expression("sleepy", force=True)
+    fibi_window._on_voice_preparing(False)
+    assert fibi_window.bubble._voice_status == "speaking..."
+    assert fibi_window.sprite.expression == "sleepy"
+
+    fibi_window._on_voice_preparing(True)
+    assert fibi_window.bubble._voice_status == "processing voice..."
+    assert fibi_window.sprite.expression == "sleepy"
+
+    fibi_window._on_speaking_finished(False)
+    assert fibi_window.bubble._voice_status == ""

@@ -157,6 +157,7 @@ def configure_demo_voice(profile_dir: Path) -> None:
     VoiceSkinSettingsEngine(profile_dir / "voice_skin_settings.json").update(
         allow_rvc_voice_skin=False,
         rvc_enabled=False,
+        rvc_backend="disabled",
     )
 
 

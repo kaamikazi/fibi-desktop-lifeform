@@ -245,6 +245,32 @@ def test_rvc_can_be_disabled_without_disabling_tts(tmp_path: Path) -> None:
     assert core.privacy.settings.allow_tts
 
 
+def test_rvc_can_be_enabled_with_direct_command(tmp_path: Path) -> None:
+    core, _, _ = make_core(tmp_path / "rvc-on", [], [])
+    response = core.respond("/voice rvc on")
+    assert core.voice_skin_settings.settings.rvc_enabled
+    assert core.voice_skin_settings.settings.allow_rvc_voice_skin
+    assert core.voice_skin_settings.settings.rvc_backend == "rvc_python"
+    assert response.tts_priority == "silent"
+
+
+def test_provider_error_fallback_is_silent_and_neutral(tmp_path: Path) -> None:
+    core, _, _ = make_core(tmp_path / "provider-error", [], [])
+    core._model_router_invoked = True
+    response = core._finish(
+        "explain this",
+        "Gemini is temporarily unavailable.",
+        "angry",
+        "local-fallback",
+        True,
+        core.observation.observe(),
+        None,
+    )
+    assert response.tts_text == ""
+    assert response.tts_priority == "silent"
+    assert response.mood == "idle"
+
+
 def test_safe_health_snapshot_exposes_route_and_latency_categories(tmp_path: Path) -> None:
     core, _, _ = make_core(tmp_path / "health", [], [])
     core.respond("hello")

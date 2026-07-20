@@ -398,6 +398,7 @@ def test_demo_reset_disables_only_demo_rvc(tmp_path: Path) -> None:
     demo = VoiceSkinSettingsEngine(demo_path / "voice_skin_settings.json")
     assert not demo.settings.rvc_enabled
     assert not demo.settings.allow_rvc_voice_skin
+    assert demo.settings.rvc_backend == "disabled"
     assert VoiceSkinSettingsEngine(normal_path).settings.rvc_enabled
 
 
