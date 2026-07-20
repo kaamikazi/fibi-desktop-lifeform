@@ -12,8 +12,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from tools.build_windows import DIST_DIR, release_zip_path
 
-CHECKSUM_PATH = DIST_DIR / "checksums_v0.30.3.txt"
-INSTALLER_PATH = DIST_DIR / "installers" / "Fibi_Chubi_Setup_v0.30.3.exe"
+CHECKSUM_PATH = DIST_DIR / "checksums_v0.30.4.txt"
+INSTALLER_PATH = DIST_DIR / "installers" / "Fibi_Chubi_Setup_v0.30.4.exe"
 
 
 def sha256(path: Path) -> str:

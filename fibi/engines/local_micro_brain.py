@@ -32,6 +32,9 @@ class LocalMicroBrain:
             "pretending to debug.",
         ],
         "affection_click_like": ["eep.", "tiny creature appreciated.", "pat accepted."],
+        "live_data_unavailable": [
+            "I need a live-data source for that. No current-data tool is connected.",
+        ],
         "model_unavailable": [
             "tiny local mode only.",
             "model creature is asleep.",

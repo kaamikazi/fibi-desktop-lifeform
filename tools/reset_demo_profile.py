@@ -107,6 +107,7 @@ def reset_profile(profile_dir: Path) -> None:
     life.update_mood("happy")
     consent = MemoryConsentEngine(profile_dir / "fibi_state.json")
     consent.reset()
+    configure_demo_voice(profile_dir)
 
     rag = RAGMemoryServiceFacade()
     review = MemoryReviewEngine(rag, deletion_log_path=profile_dir / "memory" / "memory_deletion_log.jsonl")
@@ -143,8 +144,20 @@ def reset_profile(profile_dir: Path) -> None:
         "safe_fake_sensitive_value_for_manual_demo": "FAKE_DEMO_KEY_NOT_REAL_12345",
         "normal_data_copied": False,
         "network_used": False,
+        "rvc_enabled": False,
     }
     (profile_dir / "demo_manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+
+def configure_demo_voice(profile_dir: Path) -> None:
+    """Disable slow RVC only in the explicitly isolated demo profile."""
+
+    from fibi.engines.voice_skin_settings_engine import VoiceSkinSettingsEngine
+
+    VoiceSkinSettingsEngine(profile_dir / "voice_skin_settings.json").update(
+        allow_rvc_voice_skin=False,
+        rvc_enabled=False,
+    )
 
 
 def _is_child_of(path: Path, parent: Path) -> bool:

@@ -12,6 +12,9 @@ class CloudProviderReply:
     model: str
     duration_ms: float
     error: str | None = None
+    error_category: str = ""
+    retry_count: int = 0
+    attempt_count: int = 0
 
 
 class CloudProviderBase(ABC):

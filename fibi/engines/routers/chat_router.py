@@ -17,6 +17,7 @@ LOCAL_FAST_CATEGORIES = {
     "tiny_status",
     "social_checkin",
     "affection_click_like",
+    "live_data_unavailable",
 }
 
 

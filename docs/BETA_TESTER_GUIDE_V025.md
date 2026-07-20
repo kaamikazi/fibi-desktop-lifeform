@@ -1,7 +1,7 @@
 # Fibi v0.25 Beta Tester Guide
 
 Current beta artifact names may be newer than this historical guide. For v0.30,
-use `Fibi_Chubi_v0.30.3_windows_beta.zip` and see
+use `Fibi_Chubi_v0.30.4_windows_beta.zip` and see
 `docs/BEGINNER_GUIDE_V029.md` for first commands and
 `docs/MEMORY_REVIEW_CENTER_V030.md` plus `docs/SAFETY_MODEL_V029.md` for memory and safety rules.
 

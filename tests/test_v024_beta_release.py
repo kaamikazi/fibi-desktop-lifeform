@@ -72,6 +72,6 @@ def test_docs_and_zip_name_exist() -> None:
         "docs/GUI_MANUAL_QA_V022.md",
     ]:
         assert (PROJECT_ROOT / relative).exists()
-    assert release_zip_path().name == "Fibi_Chubi_v0.30.3_windows_beta.zip"
+    assert release_zip_path().name == "Fibi_Chubi_v0.30.4_windows_beta.zip"
 
 

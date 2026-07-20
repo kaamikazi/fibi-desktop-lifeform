@@ -14,6 +14,27 @@ from fibi.settings import OLLAMA_MODEL, OLLAMA_MODEL_FALLBACKS, OLLAMA_TIMEOUT_S
 
 
 class ModelEngine:
+    def __init__(self) -> None:
+        self._health_checked_at = 0.0
+        self._health_available = False
+
+    def health_check(self, *, timeout_seconds: float = 0.6, max_age_seconds: float = 3.0) -> bool:
+        """Probe Ollama cheaply before committing to a generation timeout."""
+
+        if requests is None:
+            return False
+        now = time.monotonic()
+        if now - self._health_checked_at <= max_age_seconds:
+            return self._health_available
+        try:
+            response = requests.get(f"{OLLAMA_URL}/api/tags", timeout=timeout_seconds)
+            available = response.ok
+        except requests.RequestException:
+            available = False
+        self._health_checked_at = now
+        self._health_available = available
+        return available
+
     def generate(self, prompt: str) -> ModelResult:
         if requests is None:
             return ModelResult("", "unavailable", 0.0, "requests package is not installed")

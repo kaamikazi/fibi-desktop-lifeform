@@ -1571,6 +1571,12 @@ class ModelRouterResult:
     fallback_used: bool
     error: str | None
     reply_text: str
+    attempted_provider: str = ""
+    retry_count: int = 0
+    error_category: str = ""
+    generation_latency_ms: float = 0.0
+    fallback_latency_ms: float = 0.0
+    model_router_used: bool = True
 
 
 @dataclass(slots=True)

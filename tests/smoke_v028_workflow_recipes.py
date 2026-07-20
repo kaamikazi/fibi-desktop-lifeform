@@ -58,7 +58,7 @@ def run() -> None:
         assert "bug jar" in bug_step
 
         assert "workflow:" in core.respond("/health gui").display_text
-        assert release_zip_path().name == "Fibi_Chubi_v0.30.3_windows_beta.zip"
+        assert release_zip_path().name == "Fibi_Chubi_v0.30.4_windows_beta.zip"
 
     print("Fibi v0.28 workflow recipe smoke tests passed.")
 

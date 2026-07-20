@@ -33,7 +33,7 @@ def run() -> None:
         assert shutdown.last_marker().get("ok") is True
 
         core, _, _ = make_core(root / "core", [], [])
-        assert "Fibi Chubi v0.30.3" in core.respond("/version").display_text
+        assert "Fibi Chubi v0.30.4" in core.respond("/version").display_text
         assert "uptime" in core.respond("/health gui").display_text
         assert core.respond("/startup diagnostics").display_text
 

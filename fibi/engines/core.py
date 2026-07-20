@@ -504,9 +504,12 @@ class FibiCore:
             "provider runtime: "
             f"selected {self.model_router.selected_provider()}; "
             f"active {self.model_router.last_provider_used or 'none'}; "
-            f"fallback {self.model_router.last_fallback_provider or 'none'}",
+            f"attempted {self.model_router.last_attempted_provider or 'none'}; "
+            f"fallback {self.model_router.last_fallback_provider or self.model_router.last_fallback_status}",
             "latency: "
             f"text {self.model_router.last_duration_ms:.0f}ms; "
+            f"generation {self.model_router.last_generation_latency_ms:.0f}ms; "
+            f"fallback {self.model_router.last_fallback_latency_ms:.0f}ms; "
             f"tts {self.health.performance.tts_latency_ms:.0f}ms; "
             f"rvc {getattr(self.rvc_voice_skin, 'last_duration_ms', 0.0):.0f}ms",
             self._memory_health_short_line(),
@@ -1090,19 +1093,26 @@ class FibiCore:
 
         selected = self.model_router.selected_provider()
         status = self.model_router.gemini.status(selected=selected == "gemini")
-        active = self.model_router.last_provider_used or selected
+        active = self.model_router.last_provider_used or "none"
         configured = "yes" if status.configured else "no"
         environment_loaded = "yes" if ENVIRONMENT_STATUS.loaded else "no"
         fallback_enabled = bool(status.fallback_enabled and self.privacy.settings.allow_ollama)
         fallback = "Ollama fallback on" if fallback_enabled else "Ollama fallback off"
         preview = "context preview on" if self.privacy.settings.cloud_context_preview else "context preview off"
         last_fallback = self.model_router.last_fallback_provider or "none"
-        last_error = self.model_router.last_error_category or status.last_error or "none"
+        last_error = self.model_router.last_error_category or status.last_error_category or "none"
+        retry = (
+            f"Retry available in approximately {status.retry_after_seconds}s"
+            if status.retry_after_seconds
+            else "Retry available now"
+        )
         return (
-            f"Selected: {selected}. Active: {active}. Model: {status.model}. "
+            f"Selected: {selected}. Active: {active}. State: {status.health_state}. Model: {status.model}. "
             f"Environment loaded: {environment_loaded}. Gemini key configured: {configured}. "
-            f"{fallback}. Last fallback provider: {last_fallback}. {preview}. "
-            f"Last provider error category: {last_error}. Status: {status.availability}."
+            f"{fallback}. Ollama fallback: {self.model_router.last_fallback_status}. "
+            f"Last fallback provider: {last_fallback}. {preview}. "
+            f"Last retry count: {status.last_retry_count}. {retry}. "
+            f"Last provider error category: {last_error}."
         )
 
     def get_privacy_status(self) -> str:
@@ -1450,11 +1460,37 @@ class FibiCore:
             if self.model_router.mode != "gemini" or not self.privacy.settings.allow_gemini_api:
                 return self._local_response("select Gemini first with /provider use gemini.", "sleepy", tts_priority="silent")
             result = self.model_router.gemini.test_connection()
+            self.model_router.last_attempted_provider = "gemini"
+            self.model_router.last_duration_ms = result.duration_ms
+            self.model_router.last_generation_latency_ms = result.duration_ms
+            self.model_router.last_fallback_latency_ms = 0.0
+            self.model_router.last_fallback_provider = ""
+            self.model_router.last_fallback_status = "none"
+            self.model_router.last_retry_count = result.retry_count
+            self.model_router.last_error_category = result.error_category
             if result.error:
-                return self._local_response(f"Gemini test failed: {result.error}.", "sleepy", tts_priority="silent")
+                self.model_router.last_provider_used = ""
+                return self._local_response(
+                    f"Gemini test failed: {result.error_category or 'unknown_provider_error'}.",
+                    "sleepy",
+                    tts_priority="silent",
+                )
+            self.model_router.last_provider_used = "gemini"
             return self._local_response(
                 f"Gemini test ok. model {result.model}. {result.duration_ms:.0f}ms.",
                 "happy",
+                tts_priority="silent",
+            )
+        if lowered == "/provider reset health":
+            if self.model_router.gemini.reset_transient_health():
+                return self._local_response(
+                    "Gemini transient health reset. next request may probe again.",
+                    "thinking",
+                    tts_priority="silent",
+                )
+            return self._local_response(
+                "Gemini authentication health cannot be cleared without a successful provider test.",
+                "sleepy",
                 tts_priority="silent",
             )
         if lowered == "/provider benchmark":
@@ -3287,11 +3323,12 @@ class FibiCore:
         route_started = time.perf_counter()
         user_message = self._prepare_context_command_for_model(user_message)
         event_source = "user_message" if user_message.strip() else "empty_user_message"
-        normalized_text = self.route_decisions.normalize(user_message)[:180]
-        print(f"NORMALIZED_TEXT: {normalized_text}")
+        normalized_text = self.route_decisions.normalize(user_message)
+        print(f"NORMALIZED_TEXT_LENGTH: {len(normalized_text)}")
         self._active_fast_category = "unclassified"
         self._active_local_brain_confidence = "n/a"
         self._active_local_brain_handled = None
+        self._model_router_invoked = False
         command = self.command_router.route(user_message)
         if command.handled and command.response:
             decision = self.route_decisions.decide(user_message, event_source, command_result_handled=True)
@@ -3573,7 +3610,11 @@ class FibiCore:
         decision = self.route_decisions.decide(
             user_message,
             fast_category=classified,
-            provider_allowed=self.health.provider_allowed(self.model_router.selected_provider()),
+            provider_allowed=(
+                True
+                if self.model_router.selected_provider() == "gemini"
+                else self.health.provider_allowed(self.model_router.selected_provider())
+            ),
         )
         self._log_route_decision(decision)
         if self._cancel_requested:
@@ -3586,6 +3627,7 @@ class FibiCore:
             display = "model brain is asleep."
             return self._finish(user_message, display, "sleepy", "budget-local-fallback", True, observation, related_project)
         router_start = time.perf_counter()
+        self._model_router_invoked = True
         routed = self.model_router.route(
             prompt,
             user_message,
@@ -3598,19 +3640,29 @@ class FibiCore:
             local_brain_handled=getattr(self, "_active_local_brain_handled", None),
         )
         self.budget.update(model_budget, model_started)
-        if model_budget.budget_exceeded:
+        if model_budget.budget_exceeded and not routed.reply_text.strip():
             routed.reply_text = random.choice(BUDGET_FALLBACKS)
             routed.provider_used = "fallback"
             routed.model_used = "budget-local-fallback"
             routed.fallback_used = True
             routed.error = "response budget exceeded"
-        self.health.record_provider_result(
-            routed.provider_used,
-            routed.duration_ms,
-            not routed.fallback_used and not routed.error,
-            routed.error,
+        # Gemini owns its temporary health state. Do not let a cloud outage
+        # poison the legacy provider-wide cooldown used by local Ollama.
+        if routed.provider_used in {"ollama", "nvidia", "cloud"}:
+            self.health.record_provider_result(
+                routed.provider_used,
+                routed.duration_ms,
+                not routed.error or routed.provider_used == "ollama",
+                routed.error,
+            )
+        print(
+            "RAW AI REPLY: "
+            + (
+                "[model response omitted]"
+                if routed.model_router_used
+                else routed.reply_text
+            )
         )
-        print(f"RAW AI REPLY: {'[cloud response omitted]' if routed.was_cloud else routed.reply_text}")
 
         display, tagged_mood = self._clean_model_reply(routed.reply_text)
         if is_effectively_empty(display) and not routed.error and routed.provider_used == "ollama":
@@ -3630,7 +3682,7 @@ class FibiCore:
                 local_brain_confidence=getattr(self, "_active_local_brain_confidence", "n/a"),
                 local_brain_handled=getattr(self, "_active_local_brain_handled", None),
             )
-            print(f"RAW AI REPLY: {retry.reply_text}")
+            print("RAW AI REPLY: [model response omitted]")
             display, tagged_mood = self._clean_model_reply(retry.reply_text)
             routed = retry
 
@@ -3661,9 +3713,9 @@ class FibiCore:
     def _clean_model_reply(raw: str) -> tuple[str, str]:
         has_mood_tag = bool(re.search(r"\[(idle|happy|thinking|sleepy|angry|talking)\]", raw, re.IGNORECASE))
         after_mood, mood = remove_mood_tags(raw)
-        print(f"AFTER MOOD CLEAN: {after_mood}")
+        print("AFTER MOOD CLEAN: [model response omitted]")
         display = clean_response(after_mood)
-        print(f"CLEANED DISPLAY: {display}")
+        print("CLEANED DISPLAY: [model response omitted]")
         return display, mood if has_mood_tag else ""
 
     def _finish(
@@ -3676,6 +3728,7 @@ class FibiCore:
         observation: Observation,
         related_project: str | None,
     ) -> FibiResponse:
+        router_was_used = bool(getattr(self, "_model_router_invoked", False))
         display = clean_response(display)
         decision = self.social.filter_reaction(
             display,
@@ -3691,7 +3744,7 @@ class FibiCore:
         elif decision.action == "silence":
             display = "okay."
         tts = tts_safe_text(display)
-        print(f"TTS TEXT: {tts}")
+        print(f"TTS TEXT: {'[model response omitted]' if router_was_used else tts}")
         tts_priority = self.tts_manager.priority_for(model_used)
         print(f"TTS_PRIORITY: {tts_priority}")
         previous_mood = self.life.mood
@@ -3775,21 +3828,25 @@ class FibiCore:
             motion=motion.motion_name if motion else "", project=related_project or "",
         )
         self._save_repetition()
-        provider_used = "local" if model_used.startswith("local") or "fallback" in model_used else "model"
+        provider_used = (
+            self.model_router.last_provider_used or "none"
+            if router_was_used
+            else "local" if model_used.startswith("local") or "fallback" in model_used else "model"
+        )
         route_selected = (
             "local-fallback" if model_used in {"health-local-fallback", "budget-local-fallback"}
             else "local-direct-fallback" if "fallback" in model_used
             else "local-personality" if model_used.startswith("local")
             else "model-router"
         )
-        model_router_used = route_selected in {"model-router", "local-direct-fallback"}
+        model_router_used = bool(router_was_used or route_selected in {"model-router", "local-direct-fallback"})
         self._log_reply_choice(
             "user_message" if user_message.strip() else "empty_user_message",
             getattr(self, "_active_fast_category", "unknown"),
             route_selected,
             False,
             provider_used,
-            display,
+            "[model response omitted]" if router_was_used else display,
             getattr(self, "_active_local_brain_confidence", "n/a"),
             getattr(self, "_active_local_brain_handled", None),
             model_router_used,

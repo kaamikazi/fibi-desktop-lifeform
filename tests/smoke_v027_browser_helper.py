@@ -36,7 +36,7 @@ def run() -> None:
         assert "browser helper on" in core.respond("/health gui").display_text
         assert "browser helper on" in core.respond("/debug summary").display_text
         assert model.calls == 0
-        assert release_zip_path().name == "Fibi_Chubi_v0.30.3_windows_beta.zip"
+        assert release_zip_path().name == "Fibi_Chubi_v0.30.4_windows_beta.zip"
 
     print("Fibi v0.27 browser helper smoke tests passed.")
 

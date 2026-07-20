@@ -1088,3 +1088,20 @@ python app.py
   controls.
 - Added mock-only routing/provider tests and responsive Settings smoke coverage.
 - Updated Windows beta packaging metadata to `0.30.3`.
+
+# Fibi v0.30.4
+
+- Added normalized Gemini provider error categories and session-only health
+  states.
+- Added one bounded retry with jitter for temporary service and network errors.
+- Added a short degraded/rate-limited cooldown that automatically recovers.
+- Cached and ranked stable text-generation model candidates per session.
+- Added a lightweight Ollama health probe before Gemini fallback.
+- Preserved model-router invocation and fallback attempt diagnostics after
+  failures.
+- Added `/provider reset health` and expanded safe `/provider status` output.
+- Disabled RVC only in the isolated demo reset profile.
+- Added a local capability response for live-data questions without connected
+  tools.
+- Added mock-only v0.30.4 unit and smoke coverage.
+- Updated Windows beta packaging metadata to `0.30.4`.

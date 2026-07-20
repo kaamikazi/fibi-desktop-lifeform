@@ -1,9 +1,9 @@
 {
-  "latest_version": "0.30.3",
+  "latest_version": "0.30.4",
   "channel": "windows-beta",
-  "release_date": "2026-07-20",
-  "release_notes": "Fibi v0.30.3 narrows canned conversation routes, loads development environment settings from the project root, repairs provider diagnostics and Settings readability, and adds fast Edge-only voice control.",
-  "artifact": "Fibi_Chubi_v0.30.3_windows_beta.zip",
+  "release_date": "2026-07-21",
+  "release_notes": "Fibi v0.30.4 adds bounded Gemini retries, temporary provider cooldown recovery, cached stable model candidates, fast Ollama fallback health checks, and truthful provider diagnostics.",
+  "artifact": "Fibi_Chubi_v0.30.4_windows_beta.zip",
   "download_url": "",
   "sha256": "",
   "required": false,

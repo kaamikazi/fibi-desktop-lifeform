@@ -64,7 +64,7 @@ def main() -> int:
         assert "/memory" in core.respond("/help search memory").display_text.lower()
         assert model.calls == 0
 
-    assert release_zip_path().name == "Fibi_Chubi_v0.30.3_windows_beta.zip"
+    assert release_zip_path().name == "Fibi_Chubi_v0.30.4_windows_beta.zip"
     result = subprocess.run(
         [sys.executable, "app.py", "--gui-smoke"],
         cwd=PROJECT_ROOT,

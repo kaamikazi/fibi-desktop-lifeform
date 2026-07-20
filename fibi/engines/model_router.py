@@ -16,11 +16,9 @@ from fibi.providers.types import CloudContextPreview
 from fibi.settings import CLOUD_PROVIDER
 
 ROUTER_FALLBACKS = [
-    "model brain is asleep.",
-    "Ollama is unavailable.",
-    "model creature is asleep.",
-    "i can do small thoughts right now.",
-    "local mode. explainy brain unavailable.",
+    "No language model is available right now.",
+    "The model provider is unavailable. Try again in a moment.",
+    "Local mode is active, so explainy brain is unavailable.",
 ]
 
 
@@ -43,12 +41,20 @@ class ModelRouter:
         configured_mode = self.gemini.config.selected_provider
         self.mode = configured_mode if configured_mode == "gemini" else "auto"
         self.last_provider_used = ""
+        self.last_attempted_provider = ""
         self.last_fallback_provider = ""
+        self.last_fallback_status = "none"
         self.last_error_category = ""
         self.last_duration_ms = 0.0
+        self.last_generation_latency_ms = 0.0
+        self.last_fallback_latency_ms = 0.0
+        self.last_retry_count = 0
 
     def set_mode(self, mode: str) -> str:
+        previous = self.mode
         self.mode = mode if mode in {"auto", "local", "ollama", "nvidia", "gemini"} else "auto"
+        if self.mode == "gemini" and previous != "gemini":
+            self.gemini.reset_transient_health()
         return self.mode
 
     def selected_provider(self) -> str:
@@ -85,6 +91,12 @@ class ModelRouter:
             + ("n/a" if local_brain_handled is None else str(local_brain_handled).lower())
         )
         print("MODEL_ROUTER_USED: true")
+        self.last_attempted_provider = ""
+        self.last_fallback_provider = ""
+        self.last_fallback_status = "none"
+        self.last_generation_latency_ms = 0.0
+        self.last_fallback_latency_ms = 0.0
+        self.last_retry_count = 0
         cloud_allowed = bool(privacy.allow_cloud_model and privacy.allow_nvidia_api)
         gemini_allowed = bool(
             privacy.allow_cloud_model
@@ -111,36 +123,83 @@ class ModelRouter:
         if self.mode == "gemini":
             if not gemini_allowed:
                 return self._fallback(start, "Gemini is selected but cloud permission is off")
+            self.last_attempted_provider = "gemini"
             reply = self.gemini.generate_reply(safe_prompt)
+            self.last_generation_latency_ms = reply.duration_ms
+            self.last_retry_count = reply.retry_count
             if reply.text.strip() and not reply.error:
-                return self._done(start, "gemini", reply.model, reply.text, True, False, None)
+                return self._done(
+                    start,
+                    "gemini",
+                    reply.model,
+                    reply.text,
+                    True,
+                    False,
+                    None,
+                    attempted_provider="gemini",
+                    retry_count=reply.retry_count,
+                    error_category=reply.error_category,
+                    generation_latency_ms=reply.duration_ms,
+                )
             last_error = reply.error or "Gemini returned no text"
             if not self.gemini.config.fallback_to_ollama:
                 return self._done(
                     start,
                     "fallback",
                     "local-fallback",
-                    "Gemini is unavailable. local tiny brain only.",
+                    self._gemini_unavailable_message(ollama_available=False),
                     False,
                     True,
                     last_error,
+                    attempted_provider="gemini",
+                    retry_count=reply.retry_count,
+                    error_category=reply.error_category,
+                    generation_latency_ms=reply.duration_ms,
                 )
             if privacy.allow_ollama:
-                ollama_start = time.perf_counter()
-                result = self.ollama.generate(prompt)
-                print(f"OLLAMA_DURATION_MS: {(time.perf_counter() - ollama_start) * 1000:.1f}")
-                if result.raw_text.strip() and not result.error:
-                    visible = "Gemini stumbled, so I used Ollama. " + result.raw_text
-                    return self._done(start, "ollama", result.model, visible, False, True, last_error)
-                last_error = f"{last_error}; Ollama fallback unavailable"
+                fallback_started = time.perf_counter()
+                if self._ollama_available():
+                    self.last_fallback_provider = "ollama"
+                    self.last_fallback_status = "attempted"
+                    result = self.ollama.generate(prompt)
+                    fallback_latency_ms = (time.perf_counter() - fallback_started) * 1000
+                    self.last_fallback_latency_ms = fallback_latency_ms
+                    print(f"OLLAMA_DURATION_MS: {fallback_latency_ms:.1f}")
+                    if result.raw_text.strip() and not result.error:
+                        self.last_fallback_status = "used"
+                        visible = "Gemini stumbled, so I used Ollama. " + result.raw_text
+                        return self._done(
+                            start,
+                            "ollama",
+                            result.model,
+                            visible,
+                            False,
+                            True,
+                            last_error,
+                            attempted_provider="gemini",
+                            retry_count=reply.retry_count,
+                            error_category=reply.error_category,
+                            generation_latency_ms=reply.duration_ms,
+                            fallback_latency_ms=fallback_latency_ms,
+                        )
+                    self.last_fallback_status = "failed"
+                    last_error = f"{last_error}; Ollama fallback unavailable"
+                else:
+                    self.last_fallback_status = "unavailable"
+                    self.last_fallback_latency_ms = (time.perf_counter() - fallback_started) * 1000
             return self._done(
                 start,
                 "fallback",
                 "local-fallback",
-                "Gemini stumbled. local tiny brain only.",
+                self._gemini_unavailable_message(ollama_available=False),
                 False,
                 True,
                 last_error,
+                attempted_provider="gemini",
+                retry_count=reply.retry_count,
+                error_category=reply.error_category,
+                generation_latency_ms=reply.duration_ms,
+                fallback_latency_ms=self.last_fallback_latency_ms,
             )
 
         if generic_enabled:
@@ -185,21 +244,76 @@ class ModelRouter:
         was_cloud: bool,
         fallback: bool,
         error: str | None,
+        *,
+        attempted_provider: str = "",
+        retry_count: int = 0,
+        error_category: str = "",
+        generation_latency_ms: float = 0.0,
+        fallback_latency_ms: float = 0.0,
     ) -> ModelRouterResult:
         duration_ms = (time.perf_counter() - start) * 1000
         reply = clean_response(text)
-        self.last_provider_used = provider
-        self.last_fallback_provider = provider if fallback and provider not in {"fallback", "local"} else ""
+        self.last_provider_used = "" if provider in {"fallback", "none"} else provider
+        self.last_attempted_provider = attempted_provider or self.last_attempted_provider or provider
+        if fallback and provider not in {"fallback", "local", "none"}:
+            self.last_fallback_provider = provider
+            self.last_fallback_status = "used"
         self.last_duration_ms = duration_ms
-        self.last_error_category = self._error_category(error)
+        self.last_error_category = error_category or self._error_category(error)
+        self.last_retry_count = retry_count
+        self.last_generation_latency_ms = generation_latency_ms or self.last_generation_latency_ms
+        self.last_fallback_latency_ms = fallback_latency_ms or self.last_fallback_latency_ms
         print("ROUTER END")
         print(f"ROUTER DURATION MS: {duration_ms:.1f}")
         print(f"PROVIDER_USED: {provider}")
         print(f"MODEL_USED: {model}")
         print(f"FALLBACK_USED: {str(fallback).lower()}")
         print(f"ROUTE_SELECTED: {'local-direct-fallback' if fallback else 'model-router'}")
-        print(f"FINAL_REPLY: {'[cloud response omitted]' if was_cloud else reply}")
-        return ModelRouterResult(provider, model, duration_ms, was_cloud, fallback, error, reply)
+        model_response = provider not in {"fallback", "local"} or bool(attempted_provider)
+        print(f"FINAL_REPLY: {'[model response omitted]' if model_response else reply}")
+        print(f"ATTEMPTED_PROVIDER: {self.last_attempted_provider or 'none'}")
+        print(f"FALLBACK_PROVIDER: {self.last_fallback_provider or 'none'}")
+        print(f"RETRY_COUNT: {retry_count}")
+        print(f"PROVIDER_HEALTH_STATE: {self.gemini.status().health_state if self.mode == 'gemini' else 'n/a'}")
+        print(f"GENERATION_LATENCY_MS: {self.last_generation_latency_ms:.1f}")
+        print(f"FALLBACK_LATENCY_MS: {self.last_fallback_latency_ms:.1f}")
+        return ModelRouterResult(
+            provider,
+            model,
+            duration_ms,
+            was_cloud,
+            fallback,
+            error,
+            reply,
+            self.last_attempted_provider,
+            retry_count,
+            self.last_error_category,
+            self.last_generation_latency_ms,
+            self.last_fallback_latency_ms,
+            True,
+        )
+
+    def _ollama_available(self) -> bool:
+        probe = getattr(self.ollama, "health_check", None)
+        if probe is None:
+            return True
+        try:
+            return bool(probe())
+        except Exception:
+            return False
+
+    def _gemini_unavailable_message(self, *, ollama_available: bool) -> str:
+        category = self.gemini.last_error_category
+        if category in {"temporary_unavailable", "network_error", "timeout"}:
+            local = "The local model is also unavailable." if not ollama_available else ""
+            return f"Gemini is temporarily unavailable. {local} Try again in a moment.".replace("  ", " ").strip()
+        if category in {"rate_limit_error", "quota_error"}:
+            return "Gemini is rate limited, and no local fallback is available. Try again shortly."
+        if category == "authentication_error":
+            return "Gemini configuration needs attention, and no local fallback is available."
+        if category == "model_unavailable":
+            return "The selected Gemini model is unavailable, and no local fallback is running."
+        return "Gemini could not answer, and no local fallback is available. Try again in a moment."
 
     def _error_category(self, error: str | None) -> str:
         if not error:
@@ -207,7 +321,16 @@ class ModelRouter:
         if self.mode == "gemini" and self.gemini.last_error_category:
             return self.gemini.last_error_category
         lowered = error.lower()
-        for category in ("authentication", "quota", "timeout", "network", "unavailable_model", "missing_key"):
+        for category in (
+            "authentication_error",
+            "quota_error",
+            "rate_limit_error",
+            "temporary_unavailable",
+            "timeout",
+            "network_error",
+            "model_unavailable",
+            "malformed_response",
+        ):
             if category.replace("_", " ") in lowered or category in lowered:
                 return category
         return "provider_error"

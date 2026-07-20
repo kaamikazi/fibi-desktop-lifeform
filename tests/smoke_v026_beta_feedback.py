@@ -31,11 +31,11 @@ def run() -> None:
         assert "feedback saved" in core.respond("/feedback new beta feels cozy").display_text
         assert "packed feedback crumbs" in core.respond("/feedback export").display_text
         assert "packed the safe crumbs" in core.respond(f"/support bundle for issue {issue.issue_id}").display_text
-        assert "release health v0.30.3" in core.respond("/release health").display_text
+        assert "release health v0.30.4" in core.respond("/release health").display_text
         assert "local update manifest" in core.respond("/update status").display_text
         assert "update safety" in core.respond("/update safety").display_text
         assert "paths:" in core.respond("/debug paths").display_text
-        assert release_zip_path().name == "Fibi_Chubi_v0.30.3_windows_beta.zip"
+        assert release_zip_path().name == "Fibi_Chubi_v0.30.4_windows_beta.zip"
 
     print("Fibi v0.26 beta feedback smoke tests passed.")
 

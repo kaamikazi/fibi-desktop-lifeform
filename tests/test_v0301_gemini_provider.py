@@ -124,7 +124,7 @@ def test_provider_is_lazy_and_missing_key_is_safe() -> None:
     provider = GeminiProvider(config(api_key=""))
     result = provider.generate_reply("safe prompt")
     assert result.error == "GEMINI_API_KEY is not configured"
-    assert provider.last_error_category == "missing_key"
+    assert provider.last_error_category == "authentication_error"
 
 
 def test_missing_sdk_is_safe(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -135,7 +135,7 @@ def test_missing_sdk_is_safe(monkeypatch: pytest.MonkeyPatch) -> None:
     provider = GeminiProvider(config())
     result = provider.generate_reply("safe prompt")
     assert result.error == "google-genai SDK is not installed"
-    assert provider.last_error_category == "sdk_unavailable"
+    assert provider.last_error_category == "model_unavailable"
 
 
 def test_model_discovery_filters_and_prefers_stable_flash() -> None:
@@ -153,7 +153,7 @@ def test_configured_model_is_validated() -> None:
     provider = provider_with(FakeModelsAPI(), model="gemini-does-not-exist")
     with pytest.raises(ProviderError) as captured:
         provider.select_model()
-    assert captured.value.category == "unavailable_model"
+    assert captured.value.category == "model_unavailable"
 
 
 def test_successful_mocked_response_and_usage() -> None:
@@ -185,11 +185,11 @@ def test_empty_response_is_normalized() -> None:
 @pytest.mark.parametrize(
     ("error", "category"),
     [
-        (FakeAPIError(401, "bad credential fake-unit-test-key"), "authentication"),
-        (FakeAPIError(429, "quota"), "quota"),
-        (FakeAPIError(404, "missing model"), "unavailable_model"),
+        (FakeAPIError(401, "bad credential fake-unit-test-key"), "authentication_error"),
+        (FakeAPIError(429, "quota"), "quota_error"),
+        (FakeAPIError(404, "missing model"), "model_unavailable"),
         (TimeoutError("timed out"), "timeout"),
-        (ConnectionError("network down"), "network"),
+        (ConnectionError("network down"), "network_error"),
     ],
 )
 def test_provider_errors_are_safe(error: Exception, category: str) -> None:

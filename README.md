@@ -83,10 +83,26 @@ The goal is not to claim consciousness or autonomy. The goal is a more durable d
 - Settings now uses readable tabs, grouped provider controls, scrollable pages,
   and an explicit Edge-only or Edge-plus-RVC voice selector.
 
+### Gemini Resilience
+
+- v0.30.4 classifies provider failures without treating every error as
+  permanent downtime.
+- Gemini temporary service and network failures receive one bounded retry,
+  followed by a short recoverable cooldown.
+- Stable text-generation model candidates are discovered once per session and
+  reused. A retry may use the next compatible stable candidate.
+- Ollama is health-probed before fallback, so a stopped local service does not
+  add a full generation timeout.
+- `/provider status`, `/provider test`, and `/provider reset health` expose
+  safe health, retry, fallback, and recovery diagnostics without prompts,
+  responses, memories, or credentials.
+- Current weather, news, prices, and sports scores require a connected
+  live-data source; the language model is not presented as a live-data tool.
+
 ### Local Beta Packaging
 
 - Windows portable build tooling exists.
-- A verified portable ZIP and executable were produced locally for v0.30.3.
+- A verified portable ZIP and executable are produced locally for v0.30.4.
 - Generated binaries and `dist/` are intentionally not committed to this source repository.
 - Inno Setup was not installed in the verified environment, so no installer EXE was produced.
 
@@ -256,13 +272,23 @@ Use `/provider use ollama` to return to local mode. An empty model setting uses
 safe session-only model discovery and prefers a stable Flash-class
 text-generation model available to the configured key.
 
+Temporary Gemini errors use one retry at most. During a short provider
+cooldown, Fibi reports the degraded state clearly and may use Ollama only when
+the local service health probe succeeds:
+
+```text
+/provider status
+/provider test
+/provider reset health
+```
+
 Google AI subscriptions and Gemini API billing/quota may be separate. Fibi does
 not enable billing or change billing settings. Review Google's current API
 policies and limits before use.
 
 ### B. Portable Windows Beta
 
-The verified v0.30.3 portable ZIP and executable were generated locally by the release tooling:
+The v0.30.4 portable ZIP and executable are generated locally by the release tooling:
 
 ```powershell
 python tools\build_windows.py --clean --zip
@@ -301,15 +327,12 @@ For the larger command list, see [docs/COMMANDS_V029.md](docs/COMMANDS_V029.md).
 
 ## Testing and Verification
 
-Verified v0.30.3 results:
+The current v0.30.4 validation includes:
 
-- 190 tests passed
-- 3 warnings
-- GUI smoke passed
-- v0.29, v0.30, mocked v0.30.1 provider, v0.30.2 UI, and v0.30.3 routing/Settings smoke tests passed
-- Windows build verification passed
-- checksum generation passed
-- ZIP privacy scan passed
+- 214 passing tests with no automated Gemini API calls
+- full mock-only provider resilience regression tests and GUI smoke
+- v0.30.1 provider, v0.30.2 UI, v0.30.3 routing, and v0.30.4 resilience smoke tests
+- Windows build verification, checksum generation, and ZIP privacy scan
 
 Reproducible checks:
 

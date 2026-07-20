@@ -77,7 +77,15 @@ class RouteDecisionEngine:
         category = fast_category.category if fast_category else "unknown"
         if category == "greeting":
             return self._remember(RouteDecision("local_greeting", True, False, False, "greeting", 300, fast_category=category))
-        if category in {"thanks", "goodbye", "success", "frustration", "tiny_status", "affection_click_like"}:
+        if category in {
+            "thanks",
+            "goodbye",
+            "success",
+            "frustration",
+            "tiny_status",
+            "affection_click_like",
+            "live_data_unavailable",
+        }:
             return self._remember(RouteDecision("local_micro_brain", True, False, False, category, 500, fast_category=category))
         if local_micro_brain_result and local_micro_brain_result.handled and local_micro_brain_result.confidence == "high":
             return self._remember(RouteDecision("local_micro_brain", True, False, False, "confident local micro-brain", 500, fast_category=category))

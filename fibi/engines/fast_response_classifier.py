@@ -52,6 +52,19 @@ MEMORY_QUESTIONS = (
     "remember about me",
     "my memories",
 )
+LIVE_DATA_PHRASES = (
+    "weather today",
+    "weather now",
+    "latest news",
+    "breaking news",
+    "live price",
+    "live prices",
+    "stock price",
+    "crypto price",
+    "sports score",
+    "sports scores",
+    "score today",
+)
 SIMPLE_PERSONAL_QUESTIONS = (
     "how are you",
     "how are u",
@@ -105,6 +118,8 @@ class FastResponseClassifier:
             return FastResponseCategory("privacy_command" if "privacy" in command_text else "memory_command", 0.9, False)
         if greeting_text in GREETINGS:
             return FastResponseCategory("greeting", 1.0, False)
+        if any(phrase in lowered for phrase in LIVE_DATA_PHRASES):
+            return FastResponseCategory("live_data_unavailable", 1.0, False)
         if lowered in DATE_QUESTIONS or lowered in TIME_QUESTIONS or self._looks_like_date_time_utility(lowered):
             return FastResponseCategory("local_utility", 1.0, False)
         if any(phrase in lowered for phrase in MEMORY_QUESTIONS):
