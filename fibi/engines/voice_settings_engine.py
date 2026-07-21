@@ -35,7 +35,11 @@ class VoiceSettingsEngine:
         for key, value in raw.items():
             if key not in defaults:
                 continue
-            if key == "require_confirmation_below_confidence":
+            if key in {
+                "require_confirmation_below_confidence",
+                "wake_word_sensitivity",
+                "wake_word_cooldown_seconds",
+            }:
                 defaults[key] = float(value)
             elif key in {"voice_language", "voice_provider", "microphone_device_id", "push_to_talk_hotkey"}:
                 defaults[key] = None if value is None else str(value)
@@ -53,7 +57,11 @@ class VoiceSettingsEngine:
         for key, value in values.items():
             if key not in current:
                 continue
-            if key == "require_confirmation_below_confidence":
+            if key in {
+                "require_confirmation_below_confidence",
+                "wake_word_sensitivity",
+                "wake_word_cooldown_seconds",
+            }:
                 current[key] = float(value)
             elif key in {"voice_language", "voice_provider", "microphone_device_id", "push_to_talk_hotkey"}:
                 current[key] = None if value is None else str(value)

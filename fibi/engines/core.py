@@ -446,7 +446,21 @@ class FibiCore:
     def capture_wake_command(self) -> FibiResponse:
         if not self.voice_settings.settings.wake_word_enabled:
             return self._local_response("Wake word mode is off.", "sleepy").response
-        return self.handle_voice_transcript(self.wake_word.capture_command(self.voice_settings.settings))
+        transcription = self.capture_wake_transcript()
+        if transcription.error or not transcription.should_route_to_core:
+            return self.handle_voice_transcript(transcription)
+        self.wake_word.mark_thinking()
+        response = self.route_wake_transcript(transcription)
+        self.wake_word.reset()
+        return response
+
+    def capture_wake_transcript(self) -> VoiceTranscriptionResult:
+        if not self.voice_settings.settings.wake_word_enabled:
+            return VoiceTranscriptionResult(error="wake word disabled", source="wake_word_command")
+        return self.wake_word.capture_command(self.voice_settings.settings)
+
+    def route_wake_transcript(self, transcription: VoiceTranscriptionResult) -> FibiResponse:
+        return self.handle_voice_transcript(transcription)
 
     def cancel_voice_listen(self) -> FibiResponse:
         return self._local_response("ears canceled.", "sleepy").response
@@ -1956,7 +1970,15 @@ class FibiCore:
             return self._local_response(self.voice_health.mic_test(self.voice_settings.settings), "thinking")
         if lowered in {"/wake status", "/wake word status"}:
             enabled = self.voice_settings.settings.wake_word_enabled
-            return self._local_response("Wake word mode is on: oi fibi." if enabled else "Wake word mode is off.", "thinking")
+            microphone = self.voice_settings.settings.allow_voice_input
+            state = self.wake_word.state.value
+            sensitivity = self.voice_settings.settings.wake_word_sensitivity
+            detector = f"active ({state})" if enabled and microphone else "inactive"
+            status = (
+                f"Wake mode: {'on' if enabled else 'off'}. Microphone: {'active' if microphone and enabled else 'inactive'}. "
+                f"Detector: {detector}. Sensitivity: {sensitivity:.2f}."
+            )
+            return self._local_response(status, "thinking", tts_priority="silent")
         if lowered in {"/wake on", "/wake word on"}:
             self.voice_settings.update(
                 allow_voice_input=True,
@@ -1966,7 +1988,18 @@ class FibiCore:
             return self._local_response("Wake word mode on: oi fibi.", "happy")
         if lowered in {"/wake off", "/wake word off"}:
             self.voice_settings.update(wake_word_enabled=False, save_voice_audio=False)
+            self.wake_word.reset()
             return self._local_response("Wake word mode is off.", "sleepy")
+        if lowered == "/wake test":
+            if not self.voice_settings.settings.wake_word_enabled:
+                return self._local_response("Wake mode is off. Use /wake on first.", "sleepy", tts_priority="silent")
+            detected, result = self.listen_for_wake_once()
+            confidence = self.wake_word.last_detection.confidence
+            self.wake_word.reset()
+            if detected:
+                return self._local_response(f"Wake detector heard you. Confidence: {confidence:.2f}.", "happy", tts_priority="silent")
+            reason = "microphone error" if result.error else "phrase not detected"
+            return self._local_response(f"Wake test: {reason}. Confidence: {confidence:.2f}.", "thinking", tts_priority="silent")
         return LocalCommandResult(False)
 
     def _handle_voice_skin_command(self, text: str, lowered: str) -> LocalCommandResult:

@@ -409,6 +409,8 @@ class VoiceInputSettings:
     allow_voice_input: bool = False
     push_to_talk_enabled: bool = True
     wake_word_enabled: bool = False
+    wake_word_sensitivity: float = 0.72
+    wake_word_cooldown_seconds: float = 2.5
     voice_confirmation_for_actions: bool = True
     require_confirmation_below_confidence: float = 0.75
     voice_language: str = "en-US"

@@ -129,7 +129,7 @@ def run() -> None:
 
         devices = core.respond("/mic devices")
         assert "fake mic" in devices.display_text
-        assert core.respond("/wake word status").display_text == "Wake word mode is off."
+        assert "Wake mode: off" in core.respond("/wake word status").display_text
 
         listened = core.respond("/listen")
         assert "Result: completed" in listened.display_text

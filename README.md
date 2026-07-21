@@ -106,12 +106,16 @@ The goal is not to claim consciousness or autonomy. The goal is a more durable d
 
 - Wake Word Mode is off by default and can only be enabled in Settings > Voice
   or with `/wake on`. Use `/wake off` and `/wake status` to control it.
-- Detection for `oi fibi` uses the existing local PocketSphinx path. Background
-  audio is not sent to Gemini and is never saved to disk.
+- Detection accepts `oi fibi`, `hey fibi`, bare `fibi`, and common local-STT
+  variations through the existing PocketSphinx path. Sensitivity is configurable
+  in Settings > Voice, and a short cooldown suppresses duplicate activations.
+  Background audio is not sent to Gemini and is never saved to disk.
 - A visible `MIC: WAKE` or `MIC: LISTEN` badge shows whenever the microphone is
   active. Push-to-talk remains available through the Mic button or `/listen`.
 - Detection captures one follow-up command, stops at silence/timeout, and routes
   the transcript through Fibi's normal command and chat safety pipeline.
+- `/wake test` performs a local detector check. Diagnostics report state and
+  confidence but never log raw audio or transcript text.
 
 ### Conversation and Gemini Hotfix
 

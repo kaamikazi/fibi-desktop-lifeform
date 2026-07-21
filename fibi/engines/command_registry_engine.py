@@ -150,6 +150,7 @@ def _commands() -> list[CommandMetadata]:
         CommandMetadata("/wake on", [], "voice", "Enable local oi fibi wake-word mode.", ["/wake on"], False, "low", "voice_input", True),
         CommandMetadata("/wake off", [], "voice", "Disable wake-word listening.", ["/wake off"], False, "safe", "voice_input", True),
         CommandMetadata("/wake status", [], "voice", "Show local wake-word mode status.", ["/wake status"], False, "safe", "voice_input", True),
+        CommandMetadata("/wake test", [], "voice", "Test local wake-word detection without saving audio.", ["/wake test"], False, "low", "voice_input", True),
         CommandMetadata("/voice skin status", [], "voice", "Show RVC voice skin status.", ["/voice skin status"], False, "safe", "rvc_voice_skin", True),
         CommandMetadata("/voice skin on confirm", [], "voice", "Enable configured RVC voice skin.", ["/voice skin on confirm"], True, "medium", "rvc_voice_skin", True),
         CommandMetadata("/actions status", ["/actions"], "actions", "Show desktop action safety status.", ["/actions status"], False, "safe", "desktop_actions", True),

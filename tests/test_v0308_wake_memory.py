@@ -64,7 +64,9 @@ def test_wake_mode_off_by_default_and_manual_commands_preserve_provider_voice(tm
     provider = core.model_router.selected_provider()
     rvc = core.voice_skin_settings.settings.rvc_enabled
     assert not core.voice_settings.settings.wake_word_enabled
-    assert "off" in core.respond("/wake status").display_text.lower()
+    status = core.respond("/wake status").display_text.lower()
+    assert "wake mode: off" in status
+    assert "microphone: inactive" in status
     core.respond("/wake on")
     assert core.voice_settings.settings.wake_word_enabled
     assert core.voice_settings.settings.allow_voice_input

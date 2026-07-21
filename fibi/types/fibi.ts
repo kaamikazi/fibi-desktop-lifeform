@@ -342,6 +342,8 @@ export interface VoiceInputSettings {
   allowVoiceInput: boolean;
   pushToTalkEnabled: boolean;
   wakeWordEnabled: boolean;
+  wakeWordSensitivity: number;
+  wakeWordCooldownSeconds: number;
   voiceConfirmationForActions: boolean;
   requireConfirmationBelowConfidence: number;
   voiceLanguage: string;

@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 import math
 import time
+import logging
 from contextlib import suppress
 from pathlib import Path
 
@@ -26,6 +27,7 @@ from PyQt6.QtGui import (
 from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
+    QDoubleSpinBox,
     QFileDialog,
     QCheckBox,
     QComboBox,
@@ -54,6 +56,8 @@ from fibi.life.life_engine import LifeEngine
 from fibi.ui.expression_controller import ExpressionController
 from fibi.voice.sounds import play_sound, play_sound_event
 
+LOGGER = logging.getLogger(__name__)
+
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 ASSET_DIRS = [PROJECT_DIR / "assets", PROJECT_DIR / "ui" / "assets"]
 EXPRESSIONS = ("idle", "happy", "thinking", "talking", "sleepy", "angry")
@@ -69,6 +73,7 @@ class FibiBridge(QObject):
     speaking_finished = pyqtSignal(bool)
     wake_detected = pyqtSignal()
     microphone_state = pyqtSignal(str)
+    wake_state_changed = pyqtSignal(str)
 
 def _asset_path(expression: str) -> Path | None:
     """Find an expression PNG in the supported asset folders."""
@@ -731,6 +736,25 @@ class FibiSettingsDialog(QDialog):
         self.rvc_warning_label.setObjectName("rvcWarning")
         self.rvc_warning_label.setWordWrap(True)
         processing_layout.addWidget(self.rvc_warning_label)
+        wake_group = QGroupBox("Wake detector")
+        wake_layout = QVBoxLayout(wake_group)
+        wake_row = QHBoxLayout()
+        wake_row.addWidget(QLabel("Sensitivity"))
+        self.wake_sensitivity_spin = QDoubleSpinBox()
+        self.wake_sensitivity_spin.setObjectName("wakeSensitivitySpin")
+        self.wake_sensitivity_spin.setRange(0.45, 0.95)
+        self.wake_sensitivity_spin.setSingleStep(0.05)
+        self.wake_sensitivity_spin.setDecimals(2)
+        self.wake_sensitivity_spin.setValue(self.core.voice_settings.settings.wake_word_sensitivity)
+        wake_row.addWidget(self.wake_sensitivity_spin)
+        wake_layout.addLayout(wake_row)
+        self.wake_detector_status = QLabel()
+        self.wake_detector_status.setObjectName("wakeDetectorStatus")
+        self.wake_detector_status.setWordWrap(True)
+        wake_layout.addWidget(self.wake_detector_status)
+        self.checks["wake_word_enabled"].toggled.connect(self._refresh_wake_status)
+        self._refresh_wake_status()
+        processing_layout.addWidget(wake_group)
         voice_layout.insertWidget(voice_layout.count() - 1, processing_group)
 
         actions_layout = add_tab("Actions", "Desktop actions", [
@@ -819,6 +843,14 @@ class FibiSettingsDialog(QDialog):
         self.provider_status_badge.setText(self._selected_provider_label())
         self.provider_fallback_status.setText(self._automatic_fallback_label())
         self.rvc_status_label.setText(self._rvc_label())
+
+    def _refresh_wake_status(self, _value=None) -> None:
+        enabled = self.checks["wake_word_enabled"].isChecked()
+        microphone = self.checks["allow_voice_input"].isChecked() or enabled
+        self.wake_detector_status.setText(
+            f"Microphone: {'active' if microphone and enabled else 'inactive'} | "
+            f"Wake detector: {'active' if enabled else 'inactive'}"
+        )
 
     @staticmethod
     def _settings_stylesheet() -> str:
@@ -909,6 +941,7 @@ class FibiSettingsDialog(QDialog):
         self.core.update_voice_settings(
             allow_voice_input=self.checks["allow_voice_input"].isChecked() or wake_enabled,
             wake_word_enabled=wake_enabled,
+            wake_word_sensitivity=self.wake_sensitivity_spin.value(),
             save_voice_audio=False,
         )
         use_rvc = self.rvc_checkbox.isChecked()
@@ -1637,6 +1670,7 @@ class FibiWindow(QWidget):
         self.bridge.speaking_finished.connect(self._on_speaking_finished)
         self.bridge.wake_detected.connect(self._on_wake_detected)
         self.bridge.microphone_state.connect(self._set_microphone_state)
+        self.bridge.wake_state_changed.connect(self._on_wake_state_changed)
 
     def _setup_tray(self) -> None:
         if not QSystemTrayIcon.isSystemTrayAvailable():
@@ -1900,7 +1934,8 @@ class FibiWindow(QWidget):
             self._wake_stop.set()
             self._set_microphone_state("")
             return
-        self._set_microphone_state("wake")
+        if self.core.wake_word.state.value == "idle":
+            self._set_microphone_state("wake")
         if self._wake_thread is not None and self._wake_thread.is_alive():
             return
         self._wake_stop.clear()
@@ -1917,27 +1952,85 @@ class FibiWindow(QWidget):
                 if self._wake_stop.is_set():
                     return
                 if detected:
+                    self.bridge.wake_state_changed.emit("wake_detected")
                     self.bridge.wake_detected.emit()
-                    self.bridge.microphone_state.emit("command")
-                    self.bridge.response_ready.emit(self.core.capture_wake_command())
-                    self._wake_stop.wait(0.6)
+                    self.bridge.wake_state_changed.emit("listening")
+                    transcription = self.core.capture_wake_transcript()
+                    self.bridge.wake_state_changed.emit("transcribing")
+                    if transcription.error or not transcription.should_route_to_core:
+                        self.core.wake_word.reset()
+                        self.bridge.wake_state_changed.emit("idle")
+                        self._wake_stop.wait(0.8)
+                        continue
+                    self.core.wake_word.mark_thinking()
+                    self.bridge.wake_state_changed.emit("thinking")
+                    self.bridge.response_ready.emit(self.core.route_wake_transcript(transcription))
+                    self._wake_stop.wait(self.core.voice_settings.settings.wake_word_cooldown_seconds)
                 elif result.error:
                     self._wake_stop.wait(1.2)
             except Exception as error:
-                print(f"ERROR: wake word listener failed: {error}")
+                LOGGER.error("wake listener failed error_type=%s", type(error).__name__)
+                self.core.wake_word.reset()
+                self.bridge.wake_state_changed.emit("idle")
                 self._wake_stop.wait(1.5)
 
     def _on_wake_detected(self) -> None:
         self.life.set_listening(True)
-        self.sprite.set_expression("thinking", temporary_ms=9000)
-        self.bubble.show_text("listening...", BubbleDisplayOptions("instant", 0, True, True))
+        self.sprite.set_expression("listening", temporary_ms=9000)
+        self.bubble.show_text("hm?", BubbleDisplayOptions("instant", 0, True, True))
         self._play_sound("click")
+
+    def _on_wake_state_changed(self, state: str) -> None:
+        if state == "wake_detected":
+            self._set_microphone_state("heard")
+            self.life.set_listening(True)
+            self.sprite.set_expression("listening", temporary_ms=9000)
+            self.bubble.show_text("hm?", BubbleDisplayOptions("instant", 0, True, True))
+            return
+        if state == "listening":
+            self._set_microphone_state("command")
+            self.life.set_listening(True)
+            self.sprite.set_expression("listening", temporary_ms=9000)
+            self.bubble.show_text("I'm listening.", BubbleDisplayOptions("instant", 0, True, True))
+            return
+        if state == "transcribing":
+            self.life.set_listening(False)
+            self.life.set_thinking(True)
+            self._set_microphone_state("transcribing")
+            self.sprite.set_expression("thinking", temporary_ms=6000)
+            self.bubble.show_text("one sec...", BubbleDisplayOptions("instant", 0, True, True))
+            return
+        if state == "thinking":
+            self.life.set_listening(False)
+            self.life.set_thinking(True)
+            self._set_microphone_state("")
+            self.sprite.set_expression("thinking", temporary_ms=60_000)
+            self.bubble.show_text("Fibi is thinking...", BubbleDisplayOptions("soft", 0, True, True))
+            return
+        if state == "speaking":
+            self._set_microphone_state("")
+            return
+        self.life.set_listening(False)
+        self.life.set_thinking(False)
+        self.sprite.set_expression("idle", force=True)
+        if self.core.voice_settings.settings.wake_word_enabled:
+            self._set_microphone_state("wake")
+        else:
+            self._set_microphone_state("")
 
     def _set_microphone_state(self, state: str) -> None:
         if not hasattr(self, "microphone_indicator"):
             return
         if state == "command":
             self.microphone_indicator.setText("MIC: LISTEN")
+            self.microphone_indicator.show()
+            return
+        if state == "heard":
+            self.microphone_indicator.setText("MIC: HEARD")
+            self.microphone_indicator.show()
+            return
+        if state == "transcribing":
+            self.microphone_indicator.setText("MIC: TEXT")
             self.microphone_indicator.show()
             return
         if state == "wake":
@@ -1961,14 +2054,17 @@ class FibiWindow(QWidget):
         print(f"TTS_PRIORITY: {decision.priority}")
         if not decision.should_speak:
             print(f"TTS_SKIPPED_REASON: {decision.skipped_reason}")
+            self._finish_wake_session()
             return
         if not is_voice_available():
             print("TTS_SKIPPED_REASON: unavailable")
+            self._finish_wake_session()
             return
 
         speech_text = tts_safe_text(text)
         if not speech_text:
             print("TTS_SKIPPED_REASON: empty")
+            self._finish_wake_session()
             return
 
         skin_settings = self.core.voice_skin_settings.settings
@@ -2026,6 +2122,8 @@ class FibiWindow(QWidget):
         self.bubble.set_voice_status("processing voice..." if rvc_enabled else "speaking...")
 
     def _on_speaking_started(self) -> None:
+        self.core.wake_word.mark_speaking()
+        self._on_wake_state_changed("speaking")
         self.life.set_speaking(True)
         self.bubble.set_speaking(True)
         self.bubble.set_voice_status("speaking...")
@@ -2038,6 +2136,13 @@ class FibiWindow(QWidget):
         self.sprite.set_talking(False)
         next_mood = getattr(self, "_expression_after_speech", "happy") if spoke else "idle"
         self.sprite.set_expression(next_mood, force=True)
+        self._finish_wake_session()
+
+    def _finish_wake_session(self) -> None:
+        if self.core.wake_word.state.value == "idle":
+            return
+        self.core.wake_word.reset()
+        self._on_wake_state_changed("idle")
 
     def _idle_quirk(self) -> None:
         self.life.consider_nest_stay(self.x(), self.y())
