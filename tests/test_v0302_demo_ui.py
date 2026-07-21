@@ -9,9 +9,12 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PyQt6.QtCore import Qt
+from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QLabel, QPushButton
 
 from fibi.engines.types import FibiResponse
+from fibi.life.life_engine import LifeEngine
 from fibi.ui import fibi_window as fibi_window_module
 from fibi.ui.fibi_window import FibiWindow
 from tests.smoke_v012_actions import make_core
@@ -65,38 +68,63 @@ def test_input_row_uses_layout_without_overlap(fibi_window: FibiWindow) -> None:
 
 def test_minimum_window_and_character_are_not_clipped(fibi_window: FibiWindow) -> None:
     minimum = fibi_window.minimumSize()
-    assert minimum.width() >= 560
-    assert minimum.height() >= 600
-    assert fibi_window.sprite.height() >= 390
+    assert minimum == FibiWindow.COMPACT_SIZE
+    assert fibi_window.sprite.height() >= 280
     rendered = fibi_window.sprite.rendered_sprite_rect()
     assert not rendered.isEmpty()
-    assert rendered.height() >= 300
+    assert rendered.height() >= 240
     assert fibi_window.sprite.rect().contains(rendered)
 
 
-def test_compact_actions_remain_reachable(fibi_window: FibiWindow) -> None:
-    buttons = {
-        fibi_window.memory_review_button,
-        fibi_window.workflow_button,
-        fibi_window.browser_button,
-        fibi_window.command_button,
-        fibi_window.notebook_button,
-        fibi_window.health_button,
-        fibi_window.report_button,
-        fibi_window.settings_button,
-    }
-    assert {button.text() for button in buttons} == {
-        "Memory",
-        "Workflows",
-        "Browser",
-        "Commands",
-        "Notebook",
-        "Health",
-        "Report",
-        "Settings",
-    }
-    assert all(button.isVisible() for button in buttons)
-    assert all(button.parent() is fibi_window.action_footer for button in buttons)
+def test_compact_actions_live_in_pet_menu(fibi_window: FibiWindow) -> None:
+    assert not hasattr(fibi_window, "action_footer")
+    menu = fibi_window._build_pet_menu()
+    assert [action.text() for action in menu.actions() if not action.isSeparator()] == [
+        "Chat", "Settings", "Memory", "Commands", "Browser", "Workflows", "Health", "Hide", "Exit"
+    ]
+
+
+def test_sprite_click_and_right_click_open_pet_menu(
+    fibi_window: FibiWindow,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    opened: list[object] = []
+
+    def fake_menu(_checked: bool = False, global_position=None):
+        opened.append(global_position)
+        return fibi_window._build_pet_menu()
+
+    monkeypatch.setattr(fibi_window, "_show_pet_menu", fake_menu)
+    QTest.mouseClick(fibi_window.sprite, Qt.MouseButton.LeftButton)
+    QTest.mouseClick(fibi_window.sprite, Qt.MouseButton.RightButton)
+    assert len(opened) == 2
+
+
+def test_expand_collapse_and_mode_persistence(fibi_window: FibiWindow) -> None:
+    fibi_window._expand_chat()
+    assert fibi_window.size() == FibiWindow.EXPANDED_SIZE
+    assert fibi_window.window_mode == "expanded"
+    assert fibi_window.core.app_settings.settings.window_mode == "expanded"
+    assert fibi_window.collapse_button.isVisible()
+
+    fibi_window._collapse_chat()
+    assert fibi_window.size() == FibiWindow.COMPACT_SIZE
+    assert fibi_window.window_mode == "compact"
+    assert fibi_window.core.app_settings.settings.window_mode == "compact"
+
+
+def test_double_click_focuses_chat(fibi_window: FibiWindow) -> None:
+    QTest.mouseDClick(fibi_window.sprite, Qt.MouseButton.LeftButton)
+    QApplication.processEvents()
+    assert fibi_window.window_mode == "expanded"
+    assert fibi_window.chat_input.hasFocus()
+
+
+def test_window_position_is_saved(fibi_window: FibiWindow) -> None:
+    fibi_window.core.handle_drag_end(123, 234)
+    restored = LifeEngine(fibi_window.life.state_path)
+    assert restored.window_position is not None
+    assert (restored.window_position.x, restored.window_position.y) == (123, 234)
 
 
 def test_provider_badge_tracks_local_cloud_and_fallback(fibi_window: FibiWindow) -> None:

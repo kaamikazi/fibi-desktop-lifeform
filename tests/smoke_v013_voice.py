@@ -185,8 +185,10 @@ def run() -> None:
             "dangerous" in blocked.display_text
             or "refuses" in blocked.display_text
             or "touching" in blocked.display_text
-            or "human hands" in blocked.display_text
-        )
+                or "human hands" in blocked.display_text
+                or "blocked" in blocked.display_text
+                or "not allowed" in blocked.display_text
+            )
 
         model_core = make_core(
             root / "model",

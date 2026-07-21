@@ -69,7 +69,10 @@ def _blocked(name: str, description: str) -> ActionTypeDefinition:
 
 ACTION_TYPES: dict[str, ActionTypeDefinition] = {
     "open_app": _safe("open_app", "Open a known indexed desktop app."),
+    "open_folder": _safe("open_folder", "Open an allowlisted user folder."),
+    "open_project_vscode": _safe("open_project_vscode", "Open a registered project in indexed VS Code."),
     "open_website": _safe("open_website", "Open a known website in the default browser."),
+    "copy_text": _safe("copy_text", "Copy user-provided non-secret text to the clipboard."),
     "web_search": _safe("web_search", "Open a Google search in the default browser."),
     "youtube_search": _safe("youtube_search", "Open a YouTube search in the default browser."),
     "wikipedia_search": _safe("wikipedia_search", "Open a Wikipedia search in the default browser."),
@@ -83,6 +86,9 @@ ACTION_TYPES: dict[str, ActionTypeDefinition] = {
     "list_known_apps": _safe("list_known_apps", "Summarize known local apps."),
     "search_known_apps": _safe("search_known_apps", "Search the local app index."),
     "screenshot": _confirm("screenshot", "Take a screenshot, disabled by default."),
+    "type_text": _confirm("type_text", "Type user-approved non-secret text into the active application."),
+    "create_folder": _confirm("create_folder", "Create one folder inside an allowlisted location."),
+    "run_safe_command": _confirm("run_safe_command", "Run one exact command from Fibi's safe command allowlist."),
     "shutdown_pc": _confirm("shutdown_pc", "Shut down the PC, disabled by default."),
     "restart_pc": _confirm("restart_pc", "Restart the PC, disabled by default."),
     "open_file_location": _confirm("open_file_location", "Open a file location, disabled by default."),
@@ -97,6 +103,7 @@ ACTION_TYPES: dict[str, ActionTypeDefinition] = {
     "purchase": _blocked("purchase", "Buy things. Not allowed in v0.12."),
     "login_action": _blocked("login_action", "Login or account actions. Not allowed in v0.12."),
     "password_action": _blocked("password_action", "Password actions. Not allowed in v0.12."),
+    "install_software": _blocked("install_software", "Install software. Not allowed."),
     "autonomous_clicking": _blocked("autonomous_clicking", "Autonomous clicking. Not allowed in v0.12."),
     "autonomous_typing": _blocked("autonomous_typing", "Autonomous typing. Not allowed in v0.12."),
 }

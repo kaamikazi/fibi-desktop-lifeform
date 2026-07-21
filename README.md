@@ -58,17 +58,30 @@ The goal is not to claim consciousness or autonomy. The goal is a more durable d
 - v0.30.1 adds optional, explicit-opt-in Gemini support through Google's current `google-genai` SDK.
 - Provider changes do not move identity, memory, consent, permissions, workflows, actions, or safety into the model.
 - Cloud context is minimized and previewable before use.
-- Gemini failures can visibly fall back once to local Ollama.
+- Provider switching and optional fallback remain explicit saved user choices.
 
-### Demo UI Polish
+### Compact Desktop Pet
 
-- v0.30.2 gives the floating companion a responsive four-zone layout.
-- Fibi is visually larger without modifying the expression PNG assets.
+- Fibi starts in a compact `380x460` pet window with the character, speech
+  bubble, input row, and provider badge visible.
+- Clicking or right-clicking Fibi opens Chat, Settings, Memory, Commands,
+  Browser, Workflows, Health, Hide, and Exit destinations on demand.
+- Expanded chat mode and the last valid desktop position are saved locally.
 - The chat input expands while Mic and Send keep stable, non-overlapping sizes.
-- Existing Memory, Workflows, Browser, Commands, Notebook, Health, Report, and
-  Settings destinations remain available in a compact footer.
 - A state-driven badge shows local, Gemini, or fallback mode without exposing
   credentials or provider context.
+
+### Safe Manual Computer Control
+
+- Direct commands can open indexed apps, allowlisted user folders, known
+  websites, and registered projects in indexed VS Code.
+- Clipboard writing is explicit; keyboard typing, folder creation, safe
+  commands, and screenshots require confirmation and use narrow allowlists.
+- Safe commands are fixed argument arrays executed with `shell=False`.
+- File deletion, software installation, arbitrary commands, messaging,
+  credential handling, and other destructive operations remain blocked.
+- Every action reply reports the request, permission decision, result, and a
+  short reason.
 
 ### Conversation and Gemini Hotfix
 

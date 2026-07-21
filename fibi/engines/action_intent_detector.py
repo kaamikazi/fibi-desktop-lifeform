@@ -5,15 +5,8 @@ from __future__ import annotations
 import re
 import unicodedata
 
+from fibi.engines.action_allowlists import KNOWN_WEBSITES, SAFE_COMMANDS, named_user_folders
 from fibi.engines.types import ActionIntent
-
-KNOWN_WEBSITES = {
-    "youtube": "https://www.youtube.com",
-    "google": "https://www.google.com",
-    "github": "https://github.com",
-    "gmail": "https://mail.google.com",
-    "chatgpt": "https://chatgpt.com",
-}
 
 DATE_QUESTIONS = {
     "what's the date",
@@ -48,6 +41,7 @@ BLOCKED_PATTERNS = (
     ("purchase", r"\b(buy|purchase|order)\b"),
     ("login_action", r"\b(log in|login|sign in)\b"),
     ("password_action", r"\b(password|passcode|2fa)\b"),
+    ("install_software", r"\b(install|download and install|setup)\b.+\b(app|software|package|program)\b"),
     ("autonomous_clicking", r"\b(click for me|click around|auto click)\b"),
     ("autonomous_typing", r"\b(type for me|auto type)\b"),
 )
@@ -64,6 +58,36 @@ class ActionIntentDetector:
             return None
         lowered = self._normalize(text)
 
+        safe_command = re.match(r"^run\s+(.+)$", lowered)
+        if safe_command and safe_command.group(1) in SAFE_COMMANDS:
+            return ActionIntent("run_safe_command", target=safe_command.group(1), raw_text=text)
+        if safe_command:
+            return ActionIntent("run_terminal_command", target=safe_command.group(1), raw_text=text)
+
+        project_match = re.match(r"^open\s+(?:my\s+)?(.+?)\s+project\s+in\s+(?:vs\s*code|vscode)$", lowered)
+        if project_match:
+            project_name = project_match.group(1).strip()
+            return ActionIntent("open_project_vscode", target=project_name, raw_text=text)
+
+        create_match = re.match(
+            r"^create\s+(?:a\s+)?folder\s+(?:named\s+)?(.+?)\s+(?:on|in)\s+(desktop|downloads|documents)$",
+            lowered,
+        )
+        if create_match:
+            parent = named_user_folders()[create_match.group(2)]
+            return ActionIntent("create_folder", target=str(parent / create_match.group(1).strip()), raw_text=text)
+
+        copy_match = re.match(r"^copy\s+(?:this\s+)?text(?:\s*:\s*|\s+)?(.*)$", text, re.IGNORECASE)
+        if copy_match:
+            copy_target = copy_match.group(1).strip() or "this text"
+            return ActionIntent("copy_text", target=copy_target, raw_text=text)
+
+        if re.search(r"\b(type for me|auto type)\b", lowered):
+            return ActionIntent("autonomous_typing", raw_text=text)
+        type_match = re.match(r"^type\s+(?:this\s+)?(?:text\s*:?\s*)?(.+)$", text, re.IGNORECASE)
+        if type_match:
+            return ActionIntent("type_text", target=type_match.group(1).strip(), raw_text=text)
+
         for action_type, pattern in BLOCKED_PATTERNS:
             if re.search(pattern, lowered):
                 return ActionIntent(action_type, raw_text=text, direct_user_initiated=True)
@@ -77,7 +101,7 @@ class ActionIntentDetector:
             return ActionIntent("tell_date", raw_text=text)
         if lowered in {"volume up", "turn volume up", "raise volume"}:
             return ActionIntent("volume_up", raw_text=text)
-        if lowered in {"volume down", "turn volume down", "lower volume"}:
+        if lowered in {"volume down", "turn volume down", "lower volume", "lower the volume"}:
             return ActionIntent("volume_down", raw_text=text)
         if lowered in {"mute", "mute volume", "mute audio"}:
             return ActionIntent("mute", raw_text=text)
@@ -119,6 +143,8 @@ class ActionIntentDetector:
         if match:
             target = text.split(maxsplit=1)[1].strip()
             normalized = target.lower()
+            if normalized in named_user_folders():
+                return ActionIntent("open_folder", target=str(named_user_folders()[normalized]), raw_text=text)
             if normalized in KNOWN_WEBSITES:
                 return ActionIntent("open_website", target=KNOWN_WEBSITES[normalized], raw_text=text)
             if normalized.startswith(("http://", "https://")):

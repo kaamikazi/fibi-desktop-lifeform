@@ -15,6 +15,7 @@ from pathlib import Path
 from fibi.brain.cleanup import clean_response, extract_expression_markers, is_effectively_empty, remove_mood_tags, tts_safe_text
 from fibi.build_info import APP_VERSION
 from fibi.engines.action_confirmation_engine import ActionConfirmationEngine
+from fibi.engines.action_allowlists import contains_secret_marker
 from fibi.engines.action_intent_detector import ActionIntentDetector
 from fibi.engines.action_journal_engine import ActionJournalEngine
 from fibi.engines.action_settings_engine import ActionSettingsEngine
@@ -1089,6 +1090,7 @@ class FibiCore:
         return f"install status: {mode}. {portable}. data: {info.user_data_dir}."
 
     def _open_runtime_folder(self, folder: Path) -> str:
+        self.desktop_actions.register_allowed_path(folder)
         result = self.desktop_actions.execute(ActionIntent("open_folder", target=str(folder)))
         return result.message if result.ok else f"couldn't open folder: {result.error or result.message}"
 
@@ -2761,10 +2763,19 @@ class FibiCore:
         if not permission.allowed:
             self._record_action(intent, False, permission.blocked, permission.requires_confirmation, True, permission.fibi_reply)
             return self._action_response(permission.fibi_reply, "sleepy", "action-blocked", True)
-        # v0.12 keeps shutdown/restart/screenshot stubbed even after confirmation.
-        reply = "confirmed, but tiny hands still refuse that in v0.12."
-        self._record_action(intent, False, True, False, True, reply)
-        return self._action_response(reply, "sleepy", "action-confirmation-stub", True)
+        if intent.action_type in {"shutdown_pc", "restart_pc"}:
+            reply = self._format_action_result(intent, "confirmed", "blocked", "destructive system power actions remain disabled")
+            self._record_action(intent, False, True, False, True, reply)
+            return self._action_response(reply, "sleepy", "action-blocked", True, intent.action_type)
+        result = self.desktop_actions.execute(intent)
+        reply = self._format_action_result(
+            intent,
+            "confirmed and allowed",
+            "completed" if result.ok else "failed",
+            result.message if result.ok else (result.error or result.message),
+        )
+        self._record_action(intent, result.ok, not result.ok, False, True, reply)
+        return self._action_response(reply, "happy" if result.ok else "sleepy", result.provider_used, not result.ok, intent.action_type)
 
     def _handle_action_intent(self, user_message: str) -> FibiResponse | None:
         print("ACTION_INTENT_CHECKED: true")
@@ -2777,6 +2788,11 @@ class FibiCore:
         print("ACTION_INTENT_DETECTED: true")
         print(f"ACTION_TYPE: {intent.action_type}")
         print("ACTION_ROUTE_USED: true")
+        intent_error = self._prepare_action_intent(intent)
+        if intent_error:
+            reply = self._format_action_result(intent, "blocked", "failed", intent_error)
+            self._record_action(intent, False, True, False, False, reply)
+            return self._action_response(reply, "sleepy", "action-blocked", True, intent.action_type)
         permission = self.permissions.check(
             intent,
             self.action_settings.settings,
@@ -2787,19 +2803,74 @@ class FibiCore:
         )
         if permission.requires_confirmation:
             self.action_confirmations.create(intent)
-            self._record_action(intent, False, False, True, False, permission.fibi_reply)
-            return self._action_response(permission.fibi_reply, "thinking", "action-confirmation", False, intent.action_type)
+            reply = self._format_action_result(
+                intent,
+                "confirmation required",
+                "pending",
+                permission.confirmation_prompt or permission.fibi_reply,
+            )
+            self._record_action(intent, False, False, True, False, reply)
+            return self._action_response(reply, "thinking", "action-confirmation", False, intent.action_type)
         if permission.blocked or not permission.allowed:
-            self._record_action(intent, False, True, False, False, permission.fibi_reply)
-            return self._action_response(permission.fibi_reply, "sleepy", "action-blocked", True, intent.action_type)
+            reply = self._format_action_result(intent, "blocked", "failed", permission.reason or permission.fibi_reply)
+            self._record_action(intent, False, True, False, False, reply)
+            return self._action_response(reply, "sleepy", "action-blocked", True, intent.action_type)
         result = self.desktop_actions.execute(intent)
-        self._record_action(intent, result.ok, not result.ok, False, False, result.message)
+        reply = self._format_action_result(
+            intent,
+            "allowed",
+            "completed" if result.ok else "failed",
+            result.message if result.ok else (result.error or result.message),
+        )
+        self._record_action(intent, result.ok, not result.ok, False, False, reply)
         return self._action_response(
-            result.message,
+            reply,
             "happy" if result.ok else "sleepy",
             result.provider_used,
             not result.ok,
             intent.action_type,
+        )
+
+    def _prepare_action_intent(self, intent: ActionIntent) -> str:
+        """Resolve user-approved context without broadening the action allowlist."""
+
+        if intent.action_type in {"copy_text", "type_text"} and contains_secret_marker(intent.target):
+            intent.target = "[sensitive text blocked]"
+            return "text appears to contain a secret"
+        if intent.action_type == "open_project_vscode":
+            requested = intent.target.lower().strip()
+            projects = self.project_workspace.list_workspaces()
+            project = next(
+                (
+                    item
+                    for item in projects
+                    if item.name.lower() == requested
+                    or requested in {"current", "this", "fibi"} and "fibi" in item.name.lower()
+                ),
+                self.project_workspace.current() if requested in {"current", "this"} else None,
+            )
+            if project is None:
+                return "project is not registered"
+            intent.target = project.root_path
+            intent.query = project.name
+            self.desktop_actions.register_allowed_path(project.root_path)
+        if intent.action_type == "run_safe_command":
+            project = self.project_workspace.current()
+            if project:
+                intent.query = project.root_path
+                self.desktop_actions.register_allowed_path(project.root_path)
+        return ""
+
+    @staticmethod
+    def _format_action_result(intent: ActionIntent, permission: str, result: str, reason: str) -> str:
+        target = intent.target or intent.query or "none"
+        if intent.action_type in {"copy_text", "type_text"}:
+            target = "[user-approved text]"
+        return (
+            f"Action requested: {intent.action_type} - {target}\n"
+            f"Permission: {permission}\n"
+            f"Result: {result}\n"
+            f"Reason: {reason}"
         )
 
     def _record_action(

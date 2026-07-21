@@ -39,6 +39,8 @@ class AppSettingsEngine:
             defaults["animation_intensity"] = "normal"
         if defaults["language_provider"] not in {"", "ollama", "gemini"}:
             defaults["language_provider"] = ""
+        if defaults["window_mode"] not in {"compact", "expanded"}:
+            defaults["window_mode"] = "compact"
         return AppSettings(**defaults)
 
     def save(self) -> None:
@@ -53,6 +55,8 @@ class AppSettingsEngine:
             current["animation_intensity"] = "normal"
         if current["language_provider"] not in {"", "ollama", "gemini"}:
             current["language_provider"] = ""
+        if current["window_mode"] not in {"compact", "expanded"}:
+            current["window_mode"] = "compact"
         self.settings = AppSettings(**current)
         self.save()
         return self.settings

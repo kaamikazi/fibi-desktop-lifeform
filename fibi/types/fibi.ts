@@ -271,6 +271,9 @@ export interface ActionSettings {
   allowTerminalCommands: boolean;
   allowFileModification: boolean;
   allowClipboardActions: boolean;
+  allowKeyboardActions: boolean;
+  allowCreateFolders: boolean;
+  allowSafeCommands: boolean;
   allowAutonomousActions: boolean;
 }
 
@@ -1370,6 +1373,7 @@ export interface AppSettings {
   autoRunCheckAfterPatch: boolean;
   languageProvider: "" | "ollama" | "gemini";
   automaticProviderFallback: boolean;
+  windowMode: "compact" | "expanded";
 }
 
 export interface TrayAction {

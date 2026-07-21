@@ -330,7 +330,10 @@ class ActionSettings:
     allow_unknown_executables: bool = False
     allow_terminal_commands: bool = False
     allow_file_modification: bool = False
-    allow_clipboard_actions: bool = False
+    allow_clipboard_actions: bool = True
+    allow_keyboard_actions: bool = True
+    allow_create_folders: bool = True
+    allow_safe_commands: bool = True
     allow_autonomous_actions: bool = False
 
 
@@ -1699,6 +1702,7 @@ class AppSettings:
     beta_mode: bool = False
     language_provider: str = ""
     automatic_provider_fallback: bool = False
+    window_mode: str = "compact"
 
 
 @dataclass(slots=True)

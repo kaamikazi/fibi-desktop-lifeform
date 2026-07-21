@@ -60,6 +60,9 @@ class PermissionEngine:
             "shutdown_pc": "confirm shutdown",
             "restart_pc": "confirm restart",
             "screenshot": "confirm screenshot",
+            "type_text": "confirm type text",
+            "create_folder": "confirm create folder",
+            "run_safe_command": "confirm safe command",
             "open_file_location": "confirm open location",
             "launch_unknown_executable": "confirm launch",
         }.get(action_type, f"confirm {action_type.replace('_', ' ')}")
@@ -74,14 +77,24 @@ class PermissionEngine:
         action_settings: ActionSettings,
         privacy_settings: PrivacySettings,
     ) -> str:
-        if action_type == "open_app" and not action_settings.allow_open_apps:
+        if action_type in {"open_app", "open_project_vscode"} and not action_settings.allow_open_apps:
             return "opening apps disabled"
+        if action_type == "open_folder" and not action_settings.allow_open_apps:
+            return "opening folders disabled"
         if action_type in {"open_website", "web_search", "youtube_search", "wikipedia_search"} and not action_settings.allow_web_search:
             return "web actions disabled"
         if action_type in {"volume_up", "volume_down", "mute", "unmute"} and not action_settings.allow_volume_control:
             return "volume control disabled"
         if action_type == "screenshot" and not action_settings.allow_screenshot:
             return "screenshots disabled"
+        if action_type == "type_text" and not action_settings.allow_keyboard_actions:
+            return "keyboard actions disabled"
+        if action_type == "copy_text" and not action_settings.allow_clipboard_actions:
+            return "clipboard actions disabled"
+        if action_type == "create_folder" and not action_settings.allow_create_folders:
+            return "folder creation disabled"
+        if action_type == "run_safe_command" and not action_settings.allow_safe_commands:
+            return "safe commands disabled"
         if action_type in {"shutdown_pc", "restart_pc"} and not action_settings.allow_shutdown:
             return "shutdown actions disabled"
         if action_type == "launch_unknown_executable" and not action_settings.allow_unknown_executables:

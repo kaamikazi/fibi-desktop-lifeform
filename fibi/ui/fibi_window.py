@@ -39,6 +39,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QStyle,
     QSystemTrayIcon,
     QTabWidget,
     QTextEdit,
@@ -95,7 +96,7 @@ class FibiSprite(QWidget):
         self._motion_started_at = 0.0
         self.pixmaps = self._load_pixmaps()
 
-        self.setMinimumSize(300, 390)
+        self.setMinimumSize(190, 280)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         self.animation_timer = QTimer(self)
@@ -295,8 +296,8 @@ class SpeechBubble(QWidget):
         self.hide_timer = QTimer(self)
         self.hide_timer.setSingleShot(True)
         self.hide_timer.timeout.connect(self._auto_hide)
-        self.setMinimumSize(210, 108)
-        self.setMaximumHeight(148)
+        self.setMinimumSize(130, 88)
+        self.setMaximumSize(165, 132)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
     def show_text(self, text: str, options: BubbleDisplayOptions | None = None) -> None:
@@ -1165,6 +1166,9 @@ class FibiMemoryReviewDialog(QDialog):
 class FibiWindow(QWidget):
     """Always-on-top floating assistant window."""
 
+    COMPACT_SIZE = QSize(380, 460)
+    EXPANDED_SIZE = QSize(560, 620)
+
     def __init__(self) -> None:
         super().__init__()
         self.life = LifeEngine()
@@ -1183,6 +1187,7 @@ class FibiWindow(QWidget):
         self.health_dialog: FibiHealthDialog | None = None
         self.command_center_dialog: FibiCommandCenterDialog | None = None
         self.memory_review_dialog: FibiMemoryReviewDialog | None = None
+        self.window_mode = self.core.app_settings.settings.window_mode
 
         self._setup_window()
         self._build_ui()
@@ -1205,14 +1210,14 @@ class FibiWindow(QWidget):
             flags |= Qt.WindowType.WindowStaysOnTopHint
         self.setWindowFlags(flags)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setMinimumSize(580, 620)
-        self.resize(680, 660)
+        self.setMinimumSize(self.COMPACT_SIZE)
+        self.resize(self.EXPANDED_SIZE if self.window_mode == "expanded" else self.COMPACT_SIZE)
         self.setAcceptDrops(True)
 
     def _build_ui(self) -> None:
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(18, 16, 18, 16)
-        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(12, 10, 12, 12)
+        main_layout.setSpacing(7)
 
         header_layout = QHBoxLayout()
         header_layout.setContentsMargins(2, 0, 2, 0)
@@ -1221,9 +1226,7 @@ class FibiWindow(QWidget):
         self.name_label = QLabel("Fibi")
         self.name_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.name_label.setAccessibleName("Fibi companion")
-        self.name_label.setStyleSheet(
-            "color: rgba(255, 248, 253, 245); font: bold 16pt 'Segoe UI';"
-        )
+        self.name_label.setStyleSheet("color: rgba(255, 248, 253, 245); font: bold 12pt 'Segoe UI';")
         header_layout.addWidget(self.name_label)
         header_layout.addStretch(1)
 
@@ -1231,16 +1234,29 @@ class FibiWindow(QWidget):
         self.provider_badge.setObjectName("providerBadge")
         self.provider_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.provider_badge.setAccessibleName("Current language provider")
-        self.provider_badge.setMinimumHeight(28)
-        self.provider_badge.setContentsMargins(10, 0, 10, 0)
+        self.provider_badge.setMinimumHeight(24)
+        self.provider_badge.setContentsMargins(6, 0, 6, 0)
         header_layout.addWidget(self.provider_badge)
+        self.menu_button = QPushButton("...")
+        self.menu_button.setObjectName("petMenuButton")
+        self.menu_button.setFixedSize(28, 24)
+        self.menu_button.setToolTip("Fibi menu")
+        self.menu_button.clicked.connect(self._show_pet_menu)
+        header_layout.addWidget(self.menu_button)
+        self.collapse_button = QPushButton()
+        self.collapse_button.setObjectName("collapseButton")
+        self.collapse_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_TitleBarMinButton))
+        self.collapse_button.setFixedSize(28, 24)
+        self.collapse_button.setToolTip("Collapse to compact pet mode")
+        self.collapse_button.clicked.connect(self._collapse_chat)
+        header_layout.addWidget(self.collapse_button)
         main_layout.addLayout(header_layout)
 
         self.presence_area = QWidget()
         self.presence_area.setObjectName("presenceArea")
         presence_layout = QHBoxLayout(self.presence_area)
         presence_layout.setContentsMargins(0, 0, 0, 0)
-        presence_layout.setSpacing(14)
+        presence_layout.setSpacing(6)
 
         self.sprite = FibiSprite(self.life)
         presence_layout.addWidget(self.sprite, 3)
@@ -1292,8 +1308,8 @@ class FibiWindow(QWidget):
         self.chat_input = QLineEdit()
         self.chat_input.setPlaceholderText("Talk to Fibi...")
         self.chat_input.setAccessibleName("Message Fibi")
-        self.chat_input.setMinimumHeight(40)
-        self.chat_input.setMinimumWidth(180)
+        self.chat_input.setMinimumHeight(36)
+        self.chat_input.setMinimumWidth(150)
         self.chat_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.chat_input.returnPressed.connect(lambda: self._safe_ui_call("send_message", self._send_message))
         self.chat_input.setStyleSheet(
@@ -1315,7 +1331,7 @@ class FibiWindow(QWidget):
 
         self.mic_button = QPushButton("Mic")
         self.mic_button.setAccessibleName("Start voice input")
-        self.mic_button.setFixedSize(62, 40)
+        self.mic_button.setFixedSize(48, 36)
         self.mic_button.clicked.connect(lambda: self._safe_ui_call("mic_button", self._listen_voice))
         self.mic_button.setToolTip("Push to talk")
         self.mic_button.setStyleSheet(
@@ -1336,7 +1352,7 @@ class FibiWindow(QWidget):
 
         self.send_button = QPushButton("Send")
         self.send_button.setAccessibleName("Send message")
-        self.send_button.setFixedSize(72, 40)
+        self.send_button.setFixedSize(58, 36)
         self.send_button.clicked.connect(lambda: self._safe_ui_call("send_button", self._send_message))
         self.send_button.setStyleSheet(
             """
@@ -1355,91 +1371,56 @@ class FibiWindow(QWidget):
         input_row.addWidget(self.send_button)
         main_layout.addWidget(self.input_bar)
 
-        self.action_footer = QWidget()
-        self.action_footer.setObjectName("actionFooter")
-        action_layout = QGridLayout(self.action_footer)
-        action_layout.setContentsMargins(0, 0, 0, 0)
-        action_layout.setHorizontalSpacing(6)
-        action_layout.setVerticalSpacing(6)
-
-        self.memory_review_button = self._make_action_button(
-            "Memory", "Memory Review Center", self._open_memory_review
-        )
-        self.workflow_button = self._make_action_button(
-            "Workflows", "Workflow recipe commands", self._open_workflow_help
-        )
-        self.browser_button = self._make_action_button(
-            "Browser", "Browser helper commands", self._open_browser_help
-        )
-        self.command_button = self._make_action_button(
-            "Commands", "Command Center", self._open_command_center
-        )
-        self.notebook_button = self._make_action_button(
-            "Notebook", "Fibi's local notebook", self._open_notebook
-        )
-        self.health_button = self._make_action_button(
-            "Health", "Local health summary", self._open_health
-        )
-        self.report_button = self._make_action_button(
-            "Report", "Start a local beta issue note", self._open_beta_report
-        )
-        self.settings_button = self._make_action_button(
-            "Settings", "Open local settings", self._open_settings
-        )
-
-        action_buttons = (
-            self.memory_review_button,
-            self.workflow_button,
-            self.browser_button,
-            self.command_button,
-            self.notebook_button,
-            self.health_button,
-            self.report_button,
-            self.settings_button,
-        )
-        for index, button in enumerate(action_buttons):
-            action_layout.addWidget(button, index // 4, index % 4)
-            action_layout.setColumnStretch(index % 4, 1)
-        main_layout.addWidget(self.action_footer)
-
         self.setTabOrder(self.chat_input, self.mic_button)
         self.setTabOrder(self.mic_button, self.send_button)
-        previous = self.send_button
-        for button in action_buttons:
-            self.setTabOrder(previous, button)
-            previous = button
 
         self._refresh_provider_badge()
+        self.collapse_button.setVisible(self.window_mode == "expanded")
+        self.pet_menu = self._build_pet_menu()
 
         # These areas are safe handles for moving the floating window around.
         for widget in (self, self.sprite, self.bubble, self.name_label):
             widget.installEventFilter(self)
 
-    def _make_action_button(self, label: str, tooltip: str, callback) -> QPushButton:
-        """Create one consistent compact footer action."""
+    def _build_pet_menu(self) -> QMenu:
+        """Build the small on-demand menu shared by sprite and menu button."""
 
-        button = QPushButton(label)
-        button.setAccessibleName(label)
-        button.setToolTip(tooltip)
-        button.setMinimumHeight(32)
-        button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        button.clicked.connect(lambda checked=False, cb=callback, name=label: self._safe_ui_call(f"footer:{name}", cb))
-        button.setStyleSheet(
-            """
-            QPushButton {
-                background: rgba(255, 248, 253, 225);
-                border: 1px solid rgba(244, 155, 205, 205);
-                border-radius: 8px;
-                color: #5b3768;
-                font: 8pt 'Segoe UI';
-                padding: 4px 7px;
-            }
-            QPushButton:hover { background: rgba(255, 230, 245, 245); }
-            QPushButton:pressed { background: rgba(247, 204, 230, 245); }
-            QPushButton:focus { border: 2px solid rgba(139, 92, 246, 225); }
-            """
-        )
-        return button
+        menu = QMenu(self)
+
+        def add(label: str, callback) -> None:
+            action = menu.addAction(label)
+            action.triggered.connect(lambda checked=False, cb=callback, name=label: self._safe_ui_call(f"pet-menu:{name}", cb))
+
+        add("Chat", self._expand_chat)
+        add("Settings", self._open_settings)
+        add("Memory", self._open_memory_review)
+        add("Commands", self._open_command_center)
+        add("Browser", self._open_browser_help)
+        add("Workflows", self._open_workflow_help)
+        add("Health", self._open_health)
+        menu.addSeparator()
+        add("Hide", self.hide)
+        add("Exit", self._quit_from_tray)
+        return menu
+
+    def _show_pet_menu(self, _checked: bool = False, global_position: QPoint | None = None) -> QMenu:
+        anchor = global_position or self.menu_button.mapToGlobal(self.menu_button.rect().bottomRight())
+        self.pet_menu.popup(anchor)
+        return self.pet_menu
+
+    def _set_window_mode(self, mode: str) -> None:
+        selected = mode if mode in {"compact", "expanded"} else "compact"
+        self.window_mode = selected
+        self.core.update_settings(window_mode=selected)
+        self.resize(self.EXPANDED_SIZE if selected == "expanded" else self.COMPACT_SIZE)
+        self.collapse_button.setVisible(selected == "expanded")
+
+    def _expand_chat(self) -> None:
+        self._set_window_mode("expanded")
+        self.chat_input.setFocus()
+
+    def _collapse_chat(self) -> None:
+        self._set_window_mode("compact")
 
     def _provider_badge_details(self, response: FibiResponse | None = None) -> tuple[str, str, str]:
         """Return a concise provider label derived from current runtime state."""
@@ -1922,6 +1903,14 @@ class FibiWindow(QWidget):
         if event.type() == QEvent.Type.WindowActivate and self.life.nap.is_napping:
             self._show_creature_reaction(self.core.handle_wake("focus"))
 
+        if (
+            event.type() == QEvent.Type.MouseButtonPress
+            and event.button() == Qt.MouseButton.RightButton
+            and watched in {self, self.sprite, self.bubble}
+        ):
+            self._show_pet_menu(global_position=event.globalPosition().toPoint())
+            return True
+
         if event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
             self.drag_offset = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
             self._press_global = event.globalPosition().toPoint()
@@ -1942,7 +1931,7 @@ class FibiWindow(QWidget):
             if self._is_dragging:
                 self._show_creature_reaction(self.core.handle_drag_end(self.x(), self.y()))
             elif self._press_target is self.sprite:
-                self._show_creature_reaction(self.core.handle_click())
+                self._show_pet_menu(global_position=event.globalPosition().toPoint())
             self.drag_offset = None
             self._press_global = None
             self._press_target = None
@@ -1950,7 +1939,7 @@ class FibiWindow(QWidget):
             return True
 
         if event.type() == QEvent.Type.MouseButtonDblClick:
-            self._show_creature_reaction(self.core.handle_click(double=True))
+            self._expand_chat()
             return True
 
         return super().eventFilter(watched, event)

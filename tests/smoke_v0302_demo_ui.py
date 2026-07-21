@@ -40,10 +40,11 @@ def run() -> None:
         assert not input_rect.intersects(send_rect)
         assert not mic_rect.intersects(send_rect)
         assert window.sprite.rect().contains(window.sprite.rendered_sprite_rect())
-        assert window.sprite.rendered_sprite_rect().height() >= 300
-        assert window.action_footer.isVisible()
-        assert window.workflow_button.isVisible()
-        assert window.settings_button.isVisible()
+        assert window.sprite.rendered_sprite_rect().height() >= 240
+        assert window.size() == FibiWindow.COMPACT_SIZE
+        menu_labels = [action.text() for action in window._build_pet_menu().actions() if not action.isSeparator()]
+        assert "Workflows" in menu_labels
+        assert "Settings" in menu_labels
         assert window.provider_badge.text() == "LOCAL - Ollama"
 
         window.core.model_router.set_mode("gemini")

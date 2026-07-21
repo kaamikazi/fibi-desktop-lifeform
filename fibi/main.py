@@ -25,16 +25,19 @@ def main(gui_smoke: bool = False) -> int:
             "chat_input",
             "mic_button",
             "send_button",
-            "action_footer",
-            "command_button",
-            "memory_review_button",
-            "workflow_button",
-            "settings_button",
+            "menu_button",
+            "collapse_button",
             "core",
         ]
         missing = [name for name in required if not hasattr(window, name)]
         if missing:
             print("GUI_SMOKE_FAILED missing: " + ", ".join(missing))
+            return 1
+        menu_labels = [action.text() for action in window._build_pet_menu().actions() if not action.isSeparator()]
+        expected = {"Chat", "Settings", "Memory", "Commands", "Browser", "Workflows", "Health", "Hide", "Exit"}
+        expected_size = FibiWindow.EXPANDED_SIZE if window.window_mode == "expanded" else FibiWindow.COMPACT_SIZE
+        if window.size() != expected_size or set(menu_labels) != expected:
+            print("GUI_SMOKE_FAILED compact pet contract")
             return 1
         print("GUI_SMOKE_OK")
         QTimer.singleShot(50, app.quit)

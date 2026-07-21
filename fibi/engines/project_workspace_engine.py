@@ -31,13 +31,13 @@ class ProjectWorkspaceEngine:
 
     def __init__(
         self,
-        store_path: Path = PROJECT_WORKSPACES_PATH,
+        store_path: Path | None = None,
         context: ContextEngine | None = None,
         scanner: ProjectScannerEngine | None = None,
         sanitizer: SecretSanitizer | None = None,
         settings: ProjectWorkspaceSettings | None = None,
     ) -> None:
-        self.store_path = Path(store_path)
+        self.store_path = Path(store_path) if store_path is not None else data_path("project_workspaces.json")
         self.store_path.parent.mkdir(parents=True, exist_ok=True)
         self.context = context or ContextEngine()
         self.sanitizer = sanitizer or SecretSanitizer()
