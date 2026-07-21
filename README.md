@@ -255,7 +255,7 @@ GEMINI_API_KEY=YOUR_GEMINI_API_KEY_HERE
 FIBI_PROVIDER=ollama
 FIBI_GEMINI_MODEL=gemini-3.1-flash-lite
 FIBI_GEMINI_TIMEOUT_SECONDS=8
-FIBI_GEMINI_FALLBACK_TO_OLLAMA=true
+FIBI_GEMINI_FALLBACK_TO_OLLAMA=false
 FIBI_GEMINI_STREAMING=true
 FIBI_GEMINI_GOOGLE_SEARCH=true
 FIBI_CLOUD_CONTEXT_PREVIEW=true
@@ -279,9 +279,13 @@ weather or news, and only after Gemini and cloud access have both been
 explicitly enabled. Set `FIBI_GEMINI_GOOGLE_SEARCH=false` to keep those
 questions blocked locally.
 
-Temporary Gemini errors use one retry at most. During a short provider
-cooldown, Fibi reports the degraded state clearly and may use Ollama only when
-the local service health probe succeeds:
+Provider selection is manual. Gemini errors never silently change the selected
+provider. Automatic fallback is off by default and can only be enabled from
+Settings; the saved choice remains in effect until the user changes it.
+Temporary Gemini errors use one retry at most and report degraded state clearly.
+
+RVC is also manual and persisted. Use `/voice rvc on`, `/voice rvc off`, or the
+Settings checkbox. With RVC off, Fibi sends cleaned speech directly to Edge TTS.
 
 ```text
 /provider status

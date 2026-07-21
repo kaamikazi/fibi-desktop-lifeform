@@ -37,8 +37,11 @@ class CloudContextSanitizer:
         """Return a cloud-safe prompt with no raw DB rows, logs, dreams, or clipboard."""
         safe_message = self.sanitize_text(user_message, 500)
         lines = [
-            "You write as Fibi, a tiny sleepy desktop lifeform.",
-            "Keep replies short, natural, cute, non-romantic, and local-feeling.",
+            "You write as Fibi, a helpful desktop lifeform.",
+            "Answer the user's request directly and usefully first.",
+            "Give concrete factual, explanatory, planning, coding, memory, project, or reasoning content when asked.",
+            "Cute personality is optional light flavor after the answer, never a substitute for it.",
+            "Avoid yawns, giggles, roleplay actions, and repetitive sleepy or tiny-creature filler.",
             "Never mention private data, logs, files, clipboard, or screenshots.",
             f"Current mood: {self.sanitize_text(mood, 40)}.",
         ]
@@ -48,7 +51,7 @@ class CloudContextSanitizer:
             for hint in (memory_hints or [])[:2]:
                 lines.append(f"Memory hint: {self.sanitize_text(hint, 120)}")
         if context_level == "none":
-            lines = lines[:2]
+            lines = lines[:5]
         return "\n".join(lines) + f"\nUser: {safe_message}\nFibi:"
 
     @staticmethod

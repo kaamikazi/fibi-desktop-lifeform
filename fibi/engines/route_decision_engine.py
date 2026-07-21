@@ -80,16 +80,14 @@ class RouteDecisionEngine:
         if category in {
             "thanks",
             "goodbye",
-            "success",
-            "frustration",
+            "sleep",
+            "wake",
             "tiny_status",
-            "affection_click_like",
-            "live_data_unavailable",
         }:
             return self._remember(RouteDecision("local_micro_brain", True, False, False, category, 500, fast_category=category))
         if local_micro_brain_result and local_micro_brain_result.handled and local_micro_brain_result.confidence == "high":
             return self._remember(RouteDecision("local_micro_brain", True, False, False, "confident local micro-brain", 500, fast_category=category))
-        if category in {"social_checkin", "simple_chat"}:
+        if category in {"social_checkin", "simple_chat", "live_data"}:
             route = "model_complex_chat" if provider_allowed else "local_fallback"
             return self._remember(
                 RouteDecision(

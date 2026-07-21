@@ -63,17 +63,18 @@ def test_meaningful_conversation_reaches_model_router(message: str, tmp_path: Pa
     assert response.model_used != "local-micro-brain"
 
 
-def test_short_social_reply_does_not_repeat(tmp_path: Path) -> None:
+def test_short_social_question_uses_selected_model(tmp_path: Path) -> None:
     core, model, _ = make_core(tmp_path / "social", [], [])
     first = core.respond("what are you doing?")
     second = core.respond("what are you doing?")
-    assert first.display_text != second.display_text
-    assert model.calls == 0
+    assert model.calls == 2
+    assert first.model_used == "local-fallback"
+    assert second.model_used == "local-fallback"
 
 
 def test_classifier_prefers_model_when_local_intent_is_uncertain() -> None:
     classifier = FastResponseClassifier()
-    assert classifier.classify("what are you doing?").category == "social_checkin"
+    assert classifier.classify("what are you doing?").category == "complex_chat"
     assert classifier.classify("what do you think about memory?").category == "complex_chat"
     assert classifier.classify("how are you feeling today?").category == "complex_chat"
     assert classifier.classify("tell me something interesting").should_use_model
@@ -131,6 +132,7 @@ def test_visible_gemini_fallback_updates_active_provider_status(tmp_path: Path) 
     ollama = CountingOllama("local rescue")
     core.model_router = ModelRouter(ollama=ollama, gemini=provider_with(api))
     core.model_router.set_mode("gemini")
+    core.model_router.set_automatic_fallback(True)
     core.privacy.update(allow_cloud_model=True, allow_gemini_api=True, allow_ollama=True)
     core.respond("explain provider fallback behavior")
     status = core.get_provider_status()
@@ -209,7 +211,9 @@ def test_settings_tabs_and_provider_controls_are_readable(
     assert dialog.provider_combo.isVisible()
     assert dialog.provider_status_badge.isVisible()
     assert dialog.provider_test_button.isVisible()
-    assert dialog.voice_processing_combo.currentData() == "edge"
+    assert not dialog.rvc_checkbox.isChecked()
+    assert dialog.provider_fallback_status.text() == "Automatic fallback: Off"
+    assert dialog.rvc_status_label.text() == "RVC: Off"
     visible_text = "\n".join(label.text() for label in dialog.findChildren(QLabel))
     assert "GEMINI_API_KEY=" not in visible_text
     dialog.close()

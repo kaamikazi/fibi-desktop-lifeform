@@ -39,16 +39,14 @@ def run() -> None:
     assert classifier.classify("hellooo").category == "greeting"
     assert classifier.classify("yooo").category == "greeting"
     assert classifier.classify("suppp").category == "greeting"
-    assert classifier.classify("how are you?").category == "social_checkin"
-    assert classifier.classify("are you there?").category == "social_checkin"
-    assert classifier.classify("what are you doing?").category == "social_checkin"
+    assert classifier.classify("how are you?").category == "complex_chat"
+    assert classifier.classify("are you there?").category == "tiny_status"
+    assert classifier.classify("what are you doing?").category == "complex_chat"
     assert classifier.classify("what is Python?").category == "complex_chat"
 
     micro = LocalMicroBrain()
     social = micro.reply("social_checkin", user_message="how are you?")
-    assert social.handled and social.confidence == "high" and social.text
-    doing = micro.reply("social_checkin", user_message="what are you doing?")
-    assert doing.handled and doing.confidence == "high" and doing.text
+    assert not social.handled and social.confidence == "low" and social.text is None
 
     with tempfile.TemporaryDirectory() as temp:
         root = Path(temp)
@@ -58,9 +56,13 @@ def run() -> None:
 
         assert_local_social_reply(core, model, "heyyyy", "greeting")
         assert_local_social_reply(core, model, "hiiii", "greeting")
-        assert_local_social_reply(core, model, "how are you?", "social_checkin")
-        assert_local_social_reply(core, model, "are you there?", "social_checkin")
-        assert_local_social_reply(core, model, "what are you doing?", "social_checkin")
+        assert_local_social_reply(core, model, "are you there?", "tiny_status")
+
+        for message in ("how are you?", "what are you doing?"):
+            before = model.calls
+            response = core.respond(message)
+            assert model.calls == before + 1
+            assert response.model_used == "local-fallback"
 
         complex_reply = core.respond("what is Python?")
         assert core.route_decisions.last_decision.route_name in {"model_complex_chat", "local_fallback"}

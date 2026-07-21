@@ -72,8 +72,8 @@ def run() -> None:
     assert classifier.classify("hi").category == "greeting"
     assert classifier.classify("thanks!").category == "thanks"
     assert classifier.classify("bye").category == "goodbye"
-    assert classifier.classify("it worked").category == "success"
-    assert classifier.classify("this bug crashed").category == "frustration"
+    assert classifier.classify("it worked").category == "simple_chat"
+    assert classifier.classify("this bug crashed").category == "simple_chat"
     assert classifier.classify("/privacy").category == "privacy_command"
     assert classifier.classify("what is Python?").category == "complex_chat"
     assert classifier.classify("explain this code").category == "complex_chat"
@@ -86,7 +86,7 @@ def run() -> None:
         model = CountingModel()
         core = make_core(root, model)
 
-        for message in ["hi", "thanks", "bye", "it worked", "this bug crashed", "are you there?"]:
+        for message in ["hi", "thanks", "bye", "are you there?"]:
             start = time.perf_counter()
             response = core.respond(message)
             elapsed_ms = (time.perf_counter() - start) * 1000
@@ -94,9 +94,14 @@ def run() -> None:
             assert response.model_used in {"local-greeting", "local-micro-brain"}
         assert model.calls == 0
 
+        for message in ["it worked", "this bug crashed"]:
+            response = core.respond(message)
+            assert response.model_used == "counting-model"
+        assert model.calls == 2
+
         command = core.respond("/model status")
         assert command.model_used == "local-command"
-        assert model.calls == 0
+        assert model.calls == 2
 
         cancel = core.respond("/cancel")
         assert cancel.model_used == "local-command"

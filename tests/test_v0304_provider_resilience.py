@@ -262,6 +262,7 @@ def test_dead_ollama_is_health_checked_and_skipped_without_generation() -> None:
     api = SequenceModelsAPI([FakeHTTPError(503, "temporary"), FakeHTTPError(503, "temporary")])
     ollama = HealthAwareOllama(healthy=False)
     router = ModelRouter(ollama=ollama, gemini=provider_with(api))
+    router.set_automatic_fallback(True)
     result = route(router)
     assert ollama.health_calls == 1
     assert ollama.generate_calls == 0
@@ -275,6 +276,7 @@ def test_visible_ollama_fallback_and_diagnostics() -> None:
     api = SequenceModelsAPI([TimeoutError("timed out")])
     ollama = HealthAwareOllama(healthy=True)
     router = ModelRouter(ollama=ollama, gemini=provider_with(api))
+    router.set_automatic_fallback(True)
     result = route(router)
     assert result.provider_used == "ollama"
     assert result.fallback_used
@@ -406,7 +408,7 @@ def test_demo_reset_disables_only_demo_rvc(tmp_path: Path) -> None:
     "message",
     ["weather today", "latest news", "live prices", "current sports scores"],
 )
-def test_live_data_questions_explain_capability_without_model(
+def test_live_data_questions_use_selected_model_without_switching(
     tmp_path: Path,
     message: str,
 ) -> None:
@@ -414,5 +416,6 @@ def test_live_data_questions_explain_capability_without_model(
 
     core, model, _ = make_core(tmp_path / str(abs(hash(message))), [], [])
     response = core.respond(message)
-    assert "live-data source" in response.display_text
-    assert model.calls == 0
+    assert "selected provider was not changed" in response.display_text.lower()
+    assert model.calls == 1
+    assert core.model_router.selected_provider() == "ollama"

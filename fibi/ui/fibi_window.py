@@ -648,12 +648,21 @@ class FibiSettingsDialog(QDialog):
         self.provider_combo.addItem("CLOUD - Gemini", "gemini")
         selected = self.core.model_router.selected_provider()
         self.provider_combo.setCurrentIndex(1 if selected == "gemini" else 0)
+        self.provider_combo.currentIndexChanged.connect(self._refresh_pending_provider_labels)
         provider_row.addWidget(self.provider_combo, 1)
         provider_layout.addLayout(provider_row)
-        self.provider_status_badge = QLabel(self._provider_status_heading())
+        self.provider_status_badge = QLabel(self._selected_provider_label())
         self.provider_status_badge.setObjectName("providerStatusBadge")
         self.provider_status_badge.setWordWrap(True)
         provider_layout.addWidget(self.provider_status_badge)
+        self.provider_fallback_checkbox = QCheckBox("Allow automatic provider fallback")
+        self.provider_fallback_checkbox.setChecked(
+            self.core.app_settings.settings.automatic_provider_fallback
+        )
+        self.provider_fallback_checkbox.toggled.connect(self._refresh_pending_provider_labels)
+        provider_layout.addWidget(self.provider_fallback_checkbox)
+        self.provider_fallback_status = QLabel(self._automatic_fallback_label())
+        provider_layout.addWidget(self.provider_fallback_status)
         self.cloud_label = QLabel(
             f"Gemini API key: {'configured' if self.core.model_router.gemini.is_configured() else 'not configured'}\n"
             + self.core.get_provider_status()
@@ -681,16 +690,17 @@ class FibiSettingsDialog(QDialog):
         processing_group = QGroupBox("Voice processing")
         processing_group.setObjectName("voiceProcessingSection")
         processing_layout = QVBoxLayout(processing_group)
-        self.voice_processing_combo = QComboBox()
-        self.voice_processing_combo.setObjectName("voiceProcessingCombo")
-        self.voice_processing_combo.addItem("Edge TTS only", "edge")
-        self.voice_processing_combo.addItem("Edge TTS + RVC", "rvc")
         rvc_enabled = bool(
             self.core.voice_skin_settings.settings.allow_rvc_voice_skin
             and self.core.voice_skin_settings.settings.rvc_enabled
         )
-        self.voice_processing_combo.setCurrentIndex(1 if rvc_enabled else 0)
-        processing_layout.addWidget(self.voice_processing_combo)
+        self.rvc_checkbox = QCheckBox("Use RVC voice processing")
+        self.rvc_checkbox.setObjectName("rvcEnabledCheckbox")
+        self.rvc_checkbox.setChecked(rvc_enabled)
+        self.rvc_checkbox.toggled.connect(self._refresh_pending_provider_labels)
+        processing_layout.addWidget(self.rvc_checkbox)
+        self.rvc_status_label = QLabel(self._rvc_label())
+        processing_layout.addWidget(self.rvc_status_label)
         self.rvc_warning_label = QLabel("RVC may add significant processing time on CPU.")
         self.rvc_warning_label.setObjectName("rvcWarning")
         self.rvc_warning_label.setWordWrap(True)
@@ -723,6 +733,24 @@ class FibiSettingsDialog(QDialog):
         selected = self.core.model_router.selected_provider()
         provider = "CLOUD - Gemini" if selected == "gemini" else "LOCAL - Ollama"
         return f"{provider} | Gemini {'configured' if configured else 'not configured'}"
+
+    def _selected_provider_label(self) -> str:
+        selected = str(self.provider_combo.currentData()) if hasattr(self, "provider_combo") else self.core.model_router.selected_provider()
+        return f"Selected provider: {'Gemini' if selected == 'gemini' else 'Ollama'}"
+
+    def _automatic_fallback_label(self) -> str:
+        enabled = self.provider_fallback_checkbox.isChecked()
+        return f"Automatic fallback: {'On' if enabled else 'Off'}"
+
+    def _rvc_label(self) -> str:
+        return f"RVC: {'On' if self.rvc_checkbox.isChecked() else 'Off'}"
+
+    def _refresh_pending_provider_labels(self, _value=None) -> None:
+        """Reflect pending dialog choices without changing runtime settings."""
+
+        self.provider_status_badge.setText(self._selected_provider_label())
+        self.provider_fallback_status.setText(self._automatic_fallback_label())
+        self.rvc_status_label.setText(self._rvc_label())
 
     @staticmethod
     def _settings_stylesheet() -> str:
@@ -797,10 +825,11 @@ class FibiSettingsDialog(QDialog):
             bubble_typing_effect=self.checks["bubble_typing_effect"].isChecked(),
             performance_debug_logs=self.checks["performance_debug_logs"].isChecked(),
             allow_project_checks=self.checks["allow_project_checks"].isChecked(),
+            automatic_provider_fallback=self.provider_fallback_checkbox.isChecked(),
         )
         self.core.tts_manager.speak_utility_replies = self.checks["speak_utility_replies"].isChecked()
         self.core.update_voice_settings(allow_voice_input=self.checks["allow_voice_input"].isChecked())
-        use_rvc = self.voice_processing_combo.currentData() == "rvc"
+        use_rvc = self.rvc_checkbox.isChecked()
         self.core.voice_skin_settings.update(allow_rvc_voice_skin=use_rvc, rvc_enabled=use_rvc)
         self.core.action_settings.update(allow_desktop_actions=self.checks["allow_desktop_actions"].isChecked())
         self.core.privacy.update(

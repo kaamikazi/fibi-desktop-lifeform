@@ -54,7 +54,7 @@ def run() -> None:
         assert "route:" in route_last.display_text
         assert model.calls == 0
 
-        for message in ("heyyyy", "how are you?", "are you there?", "what are you doing?"):
+        for message in ("heyyyy", "are you there?"):
             before = model.calls
             start = time.perf_counter()
             response = core.respond(message)
@@ -64,9 +64,15 @@ def run() -> None:
             assert response.model_used in {"local-greeting", "local-micro-brain"}
             assert "Ollama is unavailable" not in response.display_text
 
+        for message in ("how are you?", "what are you doing?"):
+            before = model.calls
+            response = core.respond(message)
+            assert model.calls == before + 1
+            assert response.model_used == "local-fallback"
+
         date = core.respond("what's the date")
         assert date.model_used == "local-action"
-        assert model.calls == 0
+        assert model.calls == 2
 
         context = core.respond("/context")
         assert context.model_used == "local-command"

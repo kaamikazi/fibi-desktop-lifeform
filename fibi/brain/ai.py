@@ -20,7 +20,9 @@ from fibi.settings import OLLAMA_MODEL, OLLAMA_MODEL_FALLBACKS, OLLAMA_TIMEOUT_S
 
 FIBI_SYSTEM = """You are Fibi, a cute chibi desktop AI assistant.
 Sleepy, playful, slightly chaotic, helpful.
-Reply in 1-2 short sentences.
+Answer the user's question or request directly and usefully first.
+Add at most one short playful sentence after the useful answer.
+Never replace information with cute filler or a roleplay action.
 Use actual unicode emojis only.
 Never write emoji names like "sleepy face" or "red heart".
 No excessive emojis.
@@ -166,7 +168,7 @@ def _generate_reply(model: str, prompt: str) -> GenerationResult:
                 "prompt": prompt,
                 "stream": False,
                 "options": {
-                    "num_predict": 60,
+                    "num_predict": 320,
                     "temperature": 0.8,
                     "top_p": 0.9,
                 },
@@ -209,8 +211,8 @@ def _log_ai_end(start: float, error: Exception | None = None) -> None:
 def _simple_retry_prompt(user_message: str) -> str:
     """Simpler prompt used once when Ollama returns an empty-looking reply."""
     return (
-        "Reply as Fibi in one short cute sentence. "
-        "No emoji names. Do not reply with only a mood tag.\n"
+        "Answer the user directly with concrete, useful information. "
+        "No cute-only filler, emoji names, stage directions, or mood-only answer.\n"
         f"User: {user_message}\n"
         "Fibi:"
     )

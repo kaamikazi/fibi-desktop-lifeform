@@ -29,7 +29,7 @@ class GeminiProviderConfig:
     api_key: str = ""
     model: str = ""
     timeout_seconds: int = 8
-    fallback_to_ollama: bool = True
+    fallback_to_ollama: bool = False
     streaming: bool = True
     context_preview: bool = True
     google_search: bool = True
@@ -48,7 +48,7 @@ class GeminiProviderConfig:
             api_key=api_key,
             model=os.getenv("FIBI_GEMINI_MODEL", "gemini-3.1-flash-lite").strip(),
             timeout_seconds=_env_int("FIBI_GEMINI_TIMEOUT_SECONDS", 8, 3, 30),
-            fallback_to_ollama=_env_bool("FIBI_GEMINI_FALLBACK_TO_OLLAMA", True),
+            fallback_to_ollama=_env_bool("FIBI_GEMINI_FALLBACK_TO_OLLAMA", False),
             streaming=_env_bool("FIBI_GEMINI_STREAMING", True),
             context_preview=_env_bool("FIBI_CLOUD_CONTEXT_PREVIEW", True),
             google_search=_env_bool("FIBI_GEMINI_GOOGLE_SEARCH", True),

@@ -54,7 +54,7 @@ class GeminiProvider(CloudProviderBase):
     """Bounded Gemini text provider with temporary health recovery."""
 
     name = "gemini"
-    max_tokens = 80
+    max_tokens = 320
     supports_streaming = True
     privacy_level = "minimal"
     max_attempts = 2

@@ -8,7 +8,7 @@ from fibi.engines.core import FibiCore
 from fibi.engines.habit_engine import HabitEngine
 from fibi.engines.life_engine import LifeEngine
 from fibi.engines.memory_engine import MemoryEngine
-from fibi.engines.types import Observation
+from fibi.engines.types import ModelResult, Observation
 
 
 class StaticObservation:
@@ -26,7 +26,7 @@ class StaticObservation:
 
 class NoModel:
     def generate(self, prompt: str):
-        raise AssertionError("Creature reactions must not call Ollama")
+        return ModelResult("A direct model answer.", "test-model", 0.0, None)
 
 
 def _core(tmp_path: Path, time_of_day: str = "afternoon") -> FibiCore:
@@ -97,11 +97,11 @@ def test_habit_selection_is_local():
     assert habit.line
 
 
-def test_celebration_and_frustration_need_no_model(tmp_path: Path):
+def test_celebration_and_frustration_use_model_for_useful_answers(tmp_path: Path):
     celebration = _core(tmp_path / "celebration").respond("it worked")
     frustration = _core(tmp_path / "frustration").respond("nothing works")
-    assert celebration.model_used in {"local-personality", "local-micro-brain"}
-    assert frustration.model_used in {"local-personality", "local-micro-brain"}
+    assert celebration.model_used == "test-model"
+    assert frustration.model_used == "test-model"
 
 
 def test_click_reaction_needs_no_model(tmp_path: Path):

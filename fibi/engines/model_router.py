@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import random
 import time
 
 from fibi.brain.cleanup import clean_response
@@ -15,15 +14,8 @@ from fibi.providers.gemini_provider import GeminiProvider
 from fibi.providers.types import CloudContextPreview
 from fibi.settings import CLOUD_PROVIDER
 
-ROUTER_FALLBACKS = [
-    "No language model is available right now.",
-    "The model provider is unavailable. Try again in a moment.",
-    "Local mode is active, so explainy brain is unavailable.",
-]
-
-
 class ModelRouter:
-    """Choose local, optional NVIDIA, optional Ollama, then fallback."""
+    """Route to the explicitly selected provider without silent switching."""
 
     def __init__(
         self,
@@ -39,7 +31,8 @@ class ModelRouter:
         self.gemini = gemini or GeminiProvider()
         self.sanitizer = sanitizer or CloudContextSanitizer()
         configured_mode = self.gemini.config.selected_provider
-        self.mode = configured_mode if configured_mode == "gemini" else "auto"
+        self.mode = configured_mode if configured_mode in {"gemini", "ollama"} else "ollama"
+        self.automatic_fallback_enabled = False
         self.last_provider_used = ""
         self.last_attempted_provider = ""
         self.last_fallback_provider = ""
@@ -52,10 +45,16 @@ class ModelRouter:
 
     def set_mode(self, mode: str) -> str:
         previous = self.mode
-        self.mode = mode if mode in {"auto", "local", "ollama", "nvidia", "gemini"} else "auto"
+        self.mode = mode if mode in {"ollama", "gemini"} else "ollama"
         if self.mode == "gemini" and previous != "gemini":
             self.gemini.reset_transient_health()
         return self.mode
+
+    def set_automatic_fallback(self, enabled: bool) -> bool:
+        """Update the explicit persisted fallback preference."""
+
+        self.automatic_fallback_enabled = bool(enabled)
+        return self.automatic_fallback_enabled
 
     def selected_provider(self) -> str:
         if self.mode == "gemini":
@@ -146,7 +145,7 @@ class ModelRouter:
                     generation_latency_ms=reply.duration_ms,
                 )
             last_error = reply.error or "Gemini returned no text"
-            if not self.gemini.config.fallback_to_ollama:
+            if not self.automatic_fallback_enabled:
                 return self._done(
                     start,
                     "fallback",
@@ -206,7 +205,7 @@ class ModelRouter:
                 fallback_latency_ms=self.last_fallback_latency_ms,
             )
 
-        if generic_enabled:
+        if self.automatic_fallback_enabled and generic_enabled:
             reply = self.generic_cloud.generate_reply(safe_prompt)
             if reply.text.strip() and not reply.error:
                 return self._done(start, "cloud", reply.model, reply.text, True, False, None)
@@ -214,7 +213,7 @@ class ModelRouter:
             if self.mode == "nvidia":
                 return self._fallback(start, reply.error or "cloud empty")
 
-        if nvidia_enabled:
+        if self.automatic_fallback_enabled and nvidia_enabled:
             result = self.nvidia.generate(safe_prompt)
             if result.raw_text.strip() and not result.error:
                 return self._done(start, "nvidia", result.model, result.raw_text, True, False, None)
@@ -224,7 +223,7 @@ class ModelRouter:
             if self.mode == "nvidia":
                 return self._fallback(start, result.error or "nvidia empty")
 
-        if privacy.allow_ollama and self.mode in {"auto", "ollama"}:
+        if privacy.allow_ollama and self.mode == "ollama":
             ollama_start = time.perf_counter()
             result = self.ollama.generate(prompt)
             print(f"OLLAMA_DURATION_MS: {(time.perf_counter() - ollama_start) * 1000:.1f}")
@@ -237,7 +236,9 @@ class ModelRouter:
         return self._fallback(start, last_error or "no provider produced text")
 
     def _fallback(self, start: float, error: str | None = None) -> ModelRouterResult:
-        return self._done(start, "fallback", "local-fallback", random.choice(ROUTER_FALLBACKS), False, True, error)
+        selected = self.selected_provider().title()
+        text = f"{selected} could not answer. The selected provider was not changed."
+        return self._done(start, "fallback", "local-fallback", text, False, True, error)
 
     def _done(
         self,

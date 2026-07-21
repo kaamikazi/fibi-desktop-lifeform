@@ -10,21 +10,9 @@ from fibi.engines.types import FastResponseCategory
 GREETINGS = {"hi", "hey", "hello", "yo", "sup", "oi", "oi g", "fibi", "you there"}
 THANKS = ("thanks", "thank you", "ty", "appreciate it")
 GOODBYE = ("bye", "goodbye", "see you", "later fibi", "gn", "good night")
-SUCCESS = ("it worked", "fixed", "done", "passed", "success", "solved", "finally")
-FRUSTRATION = ("bug", "crash", "failed", "broken", "nothing works", "i quit", "hate this")
-TINY_STATUS = ("are you there", "you there", "what are you doing", "still there", "you alive")
-SOCIAL_CHECKINS = {
-    "how are you",
-    "how are you doing",
-    "how are u",
-    "you okay",
-    "are you okay",
-    "are you there",
-    "what are you doing",
-    "still there",
-    "you alive",
-}
-AFFECTION = ("cute", "good fibi", "pat pat", "pet", "boop")
+TINY_STATUS = {"are you there", "you there", "still there", "you alive"}
+SLEEP_REQUESTS = {"sleep", "go to sleep", "good night", "night fibi"}
+WAKE_REQUESTS = {"wake", "wake up", "wake up fibi"}
 DATE_QUESTIONS = {
     "what's the date",
     "whats the date",
@@ -119,32 +107,26 @@ class FastResponseClassifier:
         if greeting_text in GREETINGS:
             return FastResponseCategory("greeting", 1.0, False)
         if any(phrase in lowered for phrase in LIVE_DATA_PHRASES):
-            return FastResponseCategory("live_data_unavailable", 1.0, False)
+            return FastResponseCategory("live_data", 1.0, True)
         if lowered in DATE_QUESTIONS or lowered in TIME_QUESTIONS or self._looks_like_date_time_utility(lowered):
             return FastResponseCategory("local_utility", 1.0, False)
         if any(phrase in lowered for phrase in MEMORY_QUESTIONS):
-            return FastResponseCategory("memory_command", 0.95, False)
+            return FastResponseCategory("complex_chat", 1.0, True)
         if self._matches_short_local_intent(lowered, THANKS):
             return FastResponseCategory("thanks", 0.95, False)
         if self._matches_short_local_intent(lowered, GOODBYE):
             return FastResponseCategory("goodbye", 0.95, False)
-        if self._matches_short_local_intent(lowered, SUCCESS):
-            return FastResponseCategory("success", 0.9, False)
-        # Only exact, topic-free check-ins may use a local social response.
-        # Added topics such as "how are you feeling today?" need real context.
-        if lowered in SOCIAL_CHECKINS:
-            return FastResponseCategory("social_checkin", 0.95, False)
+        if lowered in SLEEP_REQUESTS:
+            return FastResponseCategory("sleep", 1.0, False)
+        if lowered in WAKE_REQUESTS:
+            return FastResponseCategory("wake", 1.0, False)
         if lowered in TINY_STATUS:
             return FastResponseCategory("tiny_status", 0.9, False)
-        if self._matches_short_local_intent(lowered, AFFECTION):
-            return FastResponseCategory("affection_click_like", 0.8, False)
         if text.endswith("?"):
             return FastResponseCategory("complex_chat", 0.8, True)
         words = lowered.split()
         if any(re.search(rf"\b{re.escape(term)}\b", lowered) for term in COMPLEX_TERMS):
             return FastResponseCategory("complex_chat", 0.8, True)
-        if len(words) <= 4 and any(phrase in lowered for phrase in FRUSTRATION):
-            return FastResponseCategory("frustration", 0.9, False)
         if len(words) > 4:
             return FastResponseCategory("complex_chat", 0.7, True)
         if len(words) <= 4:

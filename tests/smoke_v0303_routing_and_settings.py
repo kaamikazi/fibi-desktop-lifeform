@@ -23,7 +23,7 @@ from tests.smoke_v012_actions import make_core
 def run() -> None:
     classifier = FastResponseClassifier()
     assert classifier.classify("heyyyyyyy").category == "greeting"
-    assert classifier.classify("what are you doing?").category == "social_checkin"
+    assert classifier.classify("what are you doing?").category == "complex_chat"
     for prompt in (
         "what do you think about memory?",
         "explain why Fibi separates identity from the model",

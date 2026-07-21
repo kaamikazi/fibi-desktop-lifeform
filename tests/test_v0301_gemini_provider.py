@@ -251,6 +251,7 @@ def test_one_attempt_visible_ollama_fallback() -> None:
     ollama = CountingOllama("local rescue")
     router = ModelRouter(ollama=ollama, gemini=gemini)
     router.set_mode("gemini")
+    router.set_automatic_fallback(True)
     result = router.route(
         "local rich prompt",
         "explain recursion",

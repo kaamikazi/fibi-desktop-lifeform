@@ -15,26 +15,9 @@ class LocalMicroBrain:
         "greeting": ["eep.", "hi.", "tiny creature online.", "hm?", "guarding.", "eepy but here."],
         "thanks": ["hmph. welcome.", "tiny help.", "mm. okay."],
         "goodbye": ["sleep mode.", "guarding paused.", "bye. tiny patrol later."],
-        "success": ["YAY.", "tiny victory.", "see? not doomed."],
-        "frustration": ["hmm...", "pause maybe.", "tiny creature remains."],
-        "tiny_status": ["still here.", "guarding.", "blinking professionally.", "tiny creature present.", "blink blink."],
-        "social_checkin": [
-            "sleepy. still guarding.",
-            "tiny and operational.",
-            "alive-ish.",
-            "nest ok. brain tiny.",
-            "eepy but here.",
-        ],
-        "doing_status": [
-            "guarding desktop.",
-            "watching the cursor escape.",
-            "being tiny.",
-            "pretending to debug.",
-        ],
-        "affection_click_like": ["eep.", "tiny creature appreciated.", "pat accepted."],
-        "live_data_unavailable": [
-            "I need a live-data source for that. No current-data tool is connected.",
-        ],
+        "sleep": ["okay. sleep mode.", "night. guarding quietly."],
+        "wake": ["awake.", "here. eyes open-ish."],
+        "tiny_status": ["still here.", "here.", "present."],
         "model_unavailable": [
             "tiny local mode only.",
             "model creature is asleep.",
@@ -60,11 +43,9 @@ class LocalMicroBrain:
         user_message: str = "",
         excluded_texts: Collection[str] = (),
     ) -> LocalMicroBrainResult:
-        if category == "social_checkin":
-            category = self._social_subcategory(user_message)
         if time_of_day == "late_night" and category == "simple_chat":
             category = "late_night"
-        if category in {"simple_chat", "unknown"}:
+        if category not in {"greeting", "thanks", "goodbye", "sleep", "wake", "tiny_status"}:
             return LocalMicroBrainResult(None, mood, category, "local", False, "low", False)
         lines = list(self.LINES.get(category, self.LINES["unknown"]))
         excluded = {line.strip().lower() for line in excluded_texts}
@@ -81,12 +62,3 @@ class LocalMicroBrain:
             "late_night": "sleepy",
         }.get(category, mood if mood in {"happy", "sleepy", "thinking", "idle"} else "idle")
         return LocalMicroBrainResult(random.choice(lines), mood_hint, category, "local", False, "high", True)
-
-    @staticmethod
-    def _social_subcategory(user_text_hint: str) -> str:
-        hint = user_text_hint.lower()
-        if "doing" in hint:
-            return "doing_status"
-        if "there" in hint or "alive" in hint:
-            return "tiny_status"
-        return "social_checkin"

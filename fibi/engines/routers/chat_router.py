@@ -12,12 +12,9 @@ from fibi.engines.types import FastResponseCategory, LocalMicroBrainResult, Rela
 LOCAL_FAST_CATEGORIES = {
     "thanks",
     "goodbye",
-    "success",
-    "frustration",
+    "sleep",
+    "wake",
     "tiny_status",
-    "social_checkin",
-    "affection_click_like",
-    "live_data_unavailable",
 }
 
 

@@ -89,7 +89,7 @@ def test_core_session_flow_does_not_auto_apply_or_run_checks() -> None:
         wire_session_test_paths(core, root)
         assert core.project_workspace.add_workspace(project).ok
 
-        start = core.respond("help me fix this")
+        start = core.respond("/session start help me fix this")
         assert "tiny plan made" in start.display_text
         assert model.calls == 0
         core.respond("continue")

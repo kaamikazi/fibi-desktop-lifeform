@@ -1369,6 +1369,7 @@ export interface AppSettings {
   autoSuggestCheckAfterPatch: boolean;
   autoRunCheckAfterPatch: boolean;
   languageProvider: "" | "ollama" | "gemini";
+  automaticProviderFallback: boolean;
 }
 
 export interface TrayAction {

@@ -28,8 +28,9 @@ health` clears only transient state and cannot clear authentication failures.
 
 ## Fallback Policy
 
-When Gemini is selected, Ollama fallback is attempted only when fallback
-permission is enabled and the local Ollama health endpoint responds quickly.
+When Gemini is selected, Ollama fallback is attempted only when the user has
+explicitly enabled automatic fallback in Settings and the local Ollama health
+endpoint responds quickly. Automatic fallback is off by default.
 When Ollama is stopped, Fibi skips generation and reports the provider outage
 without waiting for the normal Ollama generation timeout.
 

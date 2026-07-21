@@ -150,11 +150,14 @@ def reset_profile(profile_dir: Path) -> None:
 
 
 def configure_demo_voice(profile_dir: Path) -> None:
-    """Disable slow RVC only in the explicitly isolated demo profile."""
+    """Seed demo RVC off once without overriding a later user choice."""
 
     from fibi.engines.voice_skin_settings_engine import VoiceSkinSettingsEngine
 
-    VoiceSkinSettingsEngine(profile_dir / "voice_skin_settings.json").update(
+    settings_path = profile_dir / "voice_skin_settings.json"
+    if settings_path.exists():
+        return
+    VoiceSkinSettingsEngine(settings_path).update(
         allow_rvc_voice_skin=False,
         rvc_enabled=False,
         rvc_backend="disabled",

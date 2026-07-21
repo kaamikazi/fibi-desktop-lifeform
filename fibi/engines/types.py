@@ -1698,6 +1698,7 @@ class AppSettings:
     auto_run_check_after_patch: bool = False
     beta_mode: bool = False
     language_provider: str = ""
+    automatic_provider_fallback: bool = False
 
 
 @dataclass(slots=True)

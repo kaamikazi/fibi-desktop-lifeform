@@ -118,6 +118,18 @@ from fibi.engines.work_step_runner import WorkStepRunner
 from fibi.engines.desktop_action_engine import DesktopActionEngine
 from fibi.version import detailed_version_line, version_line
 from fibi.engines.types import ActionIntent, CheckFixPlan, CreatureReaction, FibiResponse, LocalCommandResult, LocalMicroBrainResult, Memory, MemoryCategory, MemoryDeleteRequest, MemoryEditRequest, MemoryExportRequest, Observation, PendingAction, PendingFixSuggestion, ProjectCheckRequest, VoiceTranscriptionResult, WorkSessionPlan, WorkSessionStep, WorkflowRun
+
+CUTE_ONLY_MODEL_REPLIES = {
+    "being tiny",
+    "guarding desktop",
+    "guarding",
+    "hm",
+    "hmm",
+    "eepy",
+    "giggle",
+    "tiny creature",
+    "tiny thought",
+}
 from fibi.rag.rag_memory_service import RAGMemoryServiceFacade
 from fibi.runtime_paths import logs_dir, is_packaged, runtime_info
 from fibi.logging_config import mask_secrets
@@ -254,8 +266,11 @@ class FibiCore:
         self.tts_manager = TtsManager()
         self.warmup = warmup or WarmupEngine()
         self.app_settings = app_settings or AppSettingsEngine()
-        if self.app_settings.settings.language_provider and not os.getenv("FIBI_PROVIDER", "").strip():
-            self.model_router.set_mode(self.app_settings.settings.language_provider)
+        selected_provider = self.app_settings.settings.language_provider or "ollama"
+        self.model_router.set_mode(selected_provider)
+        self.model_router.set_automatic_fallback(
+            self.app_settings.settings.automatic_provider_fallback
+        )
         self.autostart = autostart or AutostartEngine()
         self.data_health = data_health or DataHealthEngine(
             self.memory.database_path,
@@ -343,6 +358,7 @@ class FibiCore:
         self.memory_review = MemoryReviewEngine(self.memory_router.rag_memory, guard=self.sensitive_memory_guard)
         self.response_pipeline = ResponsePipeline()
         self._last_referenced_memory_id: int | None = None
+        self._last_referenced_memory_is_legacy = False
         self._cancel_requested = False
         self._last_drag_spammed = False
         self._pending_idle_motion = None
@@ -1096,8 +1112,8 @@ class FibiCore:
         active = self.model_router.last_provider_used or "none"
         configured = "yes" if status.configured else "no"
         environment_loaded = "yes" if ENVIRONMENT_STATUS.loaded else "no"
-        fallback_enabled = bool(status.fallback_enabled and self.privacy.settings.allow_ollama)
-        fallback = "Ollama fallback on" if fallback_enabled else "Ollama fallback off"
+        fallback_enabled = self.model_router.automatic_fallback_enabled
+        fallback = f"Automatic fallback: {'On' if fallback_enabled else 'Off'}"
         preview = "context preview on" if self.privacy.settings.cloud_context_preview else "context preview off"
         grounding = "Google Search grounding on" if status.google_search_enabled else "Google Search grounding off"
         last_fallback = self.model_router.last_fallback_provider or "none"
@@ -1124,7 +1140,9 @@ class FibiCore:
         return self.app_settings.settings
 
     def update_settings(self, **values):
-        return self.app_settings.update(**values)
+        settings = self.app_settings.update(**values)
+        self.model_router.set_automatic_fallback(settings.automatic_provider_fallback)
+        return settings
 
     def nap(self) -> CreatureReaction:
         text, expression = self.life.start_nap()
@@ -1174,6 +1192,7 @@ class FibiCore:
     ) -> LocalCommandResult:
         if referenced_memory_id is not None:
             self._last_referenced_memory_id = referenced_memory_id
+            self._last_referenced_memory_is_legacy = False
         timing = self.timing.select(event="reply", mood=mood, local=True)
         motion = self.motion.select(
             mood=mood,
@@ -1368,10 +1387,6 @@ class FibiCore:
 
     def _maybe_handle_provider_prompt(self, lowered: str) -> LocalCommandResult:
         mapping = {
-            "use gemini": "/provider use gemini",
-            "switch to gemini": "/provider use gemini",
-            "switch back to local": "/provider use ollama",
-            "use ollama": "/provider use ollama",
             "which model are you using": "/provider status",
             "which model are you using?": "/provider status",
             "test gemini": "/provider test",
@@ -1379,7 +1394,6 @@ class FibiCore:
             "is gemini available?": "/provider status",
             "what will be sent to the cloud": "/provider context",
             "what will be sent to the cloud?": "/provider context",
-            "use the fastest available gemini model": "/provider use gemini",
         }
         command = mapping.get(lowered)
         return self._handle_provider_command(command, command) if command else LocalCommandResult(False)
@@ -1587,37 +1601,6 @@ class FibiCore:
         if memory_prompt.handled:
             return memory_prompt
 
-        if lowered in {"what do you remember about me?", "what do you remember about me"}:
-            items = self.memory_review.list_memories(limit=8)
-            if not items:
-                return self._local_response("not much yet. tiny blank notebook.", "sleepy")
-            categories = sorted({item.category for item in items})
-            return self._local_response(
-                "i remember " + ", ".join(categories[:3]).replace("_", " ") + ".",
-                "thinking",
-                items[0].memory_id if items else None,
-            )
-
-        if lowered.startswith("what do you remember about "):
-            query = text.split("about", 1)[1].strip(" ?.")
-            results = self.memory_review.search_memories(query, top_k=3)
-            if not results:
-                legacy = self.memory_care.search_memories(query, limit=3)
-                if not legacy.entries:
-                    return self._local_response("no crumb for that yet.", "sleepy")
-                entry = legacy.entries[0]
-                return self._local_response(
-                    f"{query}: {entry.title}.",
-                    "thinking",
-                    int(entry.entry_id) if isinstance(entry.entry_id, int) else None,
-                )
-            entry = results[0].item
-            return self._local_response(
-                f"{query}: {entry.summary}.",
-                "thinking",
-                entry.memory_id,
-            )
-
         if lowered in {"forget that", "forget it"}:
             if self._last_referenced_memory_id is None:
                 return self._local_response("which crumb?", "thinking")
@@ -1652,8 +1635,6 @@ class FibiCore:
 
     def _maybe_handle_memory_prompt(self, text: str, lowered: str) -> LocalCommandResult:
         normalized = re.sub(r"\s+", " ", lowered.replace("\u2019", "'")).strip(" .!?")
-        if normalized == "what do you remember":
-            return self._handle_memory_review_command("/memories", "/memories")
         if normalized.startswith("search your memory for "):
             query = text.split("for", 1)[1].strip()
             return self._handle_memory_review_command(f"/memory search {query}", f"/memory search {query.lower()}")
@@ -1783,9 +1764,6 @@ class FibiCore:
         if lowered in {"stop this task", "cancel this task"}:
             session = self.work_sessions.cancel()
             return self._local_response("session sleeping." if session else "no session crumb.", "sleepy").response
-        starts = ("help me fix this", "guide me through this", "make a plan", "help me fix this project")
-        if lowered.startswith(starts):
-            return self._local_response(self._start_work_session(text), "thinking").response
         return None
 
     def _start_work_session(self, goal: str) -> str:
@@ -2971,12 +2949,19 @@ class FibiCore:
                 request = MemoryDeleteRequest(category=pending.category, user_confirmed=True, broad_delete=True, reason=pending.reason)
                 result = self.memory_review.delete_by_category(request)
             else:
+                if self._last_referenced_memory_is_legacy and pending.memory_id is not None:
+                    legacy = self.memory_care.delete_memory(pending.memory_id, confirm=True)
+                    if legacy.ok and legacy.changed_count:
+                        self._last_referenced_memory_id = None
+                        self._last_referenced_memory_is_legacy = False
+                        return self._local_response(legacy.message, "sleepy", tts_priority="silent")
                 request = MemoryDeleteRequest(memory_id=pending.memory_id, user_confirmed=True, reason=pending.reason)
                 result = self.memory_review.delete_memory(request)
                 if not result.ok and pending.memory_id is not None:
                     legacy = self.memory_care.delete_memory(pending.memory_id, confirm=True)
                     if legacy.ok and legacy.changed_count:
                         self._last_referenced_memory_id = None
+                        self._last_referenced_memory_is_legacy = False
                         return self._local_response(legacy.message, "sleepy", pending.memory_id, tts_priority="silent")
             return self._local_response(result.message, "sleepy", pending.memory_id, tts_priority="silent")
         if lowered == "/memory export":
@@ -3217,18 +3202,13 @@ class FibiCore:
             self.health.reset_perf()
             return self._local_response("speed crumbs reset.", "sleepy")
         if lowered == "/model local":
-            self.model_router.set_mode("local")
-            return self._local_response("local tiny brain.", "sleepy")
+            return self._local_response("use /provider use ollama to change providers.", "thinking", tts_priority="silent")
         if lowered == "/model ollama":
-            self.model_router.set_mode("ollama")
-            self.privacy.update(allow_ollama=True)
-            return self._local_response("ollama local brain.", "thinking")
+            return self._local_response("use /provider use ollama to change providers.", "thinking", tts_priority="silent")
         if lowered == "/model nvidia":
-            self.model_router.set_mode("nvidia")
-            return self._local_response("nvidia selected. cloud still needs confirm.", "thinking")
+            return self._local_response("provider choices are Gemini or Ollama in Settings.", "thinking", tts_priority="silent")
         if lowered == "/model auto":
-            self.model_router.set_mode("auto")
-            return self._local_response("auto tiny router.", "happy")
+            return self._local_response("automatic provider switching is off. choose Gemini or Ollama explicitly.", "thinking", tts_priority="silent")
         if lowered == "/cloud on confirm":
             self.privacy.update(allow_cloud_model=True, allow_nvidia_api=True)
             return self._local_response("nvidia cloud allowed.", "thinking")
@@ -3370,7 +3350,7 @@ class FibiCore:
             return action_response
 
         classified = self.chat_router.classify(user_message)
-        requires_live_data = classified.category == "live_data_unavailable"
+        requires_live_data = classified.category == "live_data"
         gemini_search_allowed = bool(
             requires_live_data
             and self.model_router.selected_provider() == "gemini"
@@ -3454,6 +3434,7 @@ class FibiCore:
             self._active_local_brain_handled = local_probe.handled
             if local_probe.handled and local_probe.confidence == "high" and local_probe.text:
                 return self._micro_response(classified.category, user_message, result=local_probe)
+            classified.should_use_model = True
             print(f"FAST_ESCALATION_REASON: {self.classifier.escalation_reason(user_message, classified)}")
 
         wake_reaction = self._wake_if_needed("message")
@@ -3695,10 +3676,11 @@ class FibiCore:
         )
 
         display, tagged_mood = self._clean_model_reply(routed.reply_text)
-        if is_effectively_empty(display) and not routed.error and routed.provider_used == "ollama":
+        if self._is_low_quality_model_reply(display) and not routed.error and routed.provider_used in {"ollama", "gemini"}:
             retry_prompt = (
                 f"System: {context.system_prompt}\n\n"
-                "Reply with one short natural Fibi sentence. No mood-only answer.\n"
+                "Answer the user's request directly and usefully. Include concrete information. "
+                "Do not reply with a stage direction, cute filler, or character-only reaction.\n"
                 f"User: {user_message}\nFibi:"
             )
             retry = self.model_router.route(
@@ -3717,10 +3699,17 @@ class FibiCore:
             display, tagged_mood = self._clean_model_reply(retry.reply_text)
             routed = retry
 
+        if self._is_low_quality_model_reply(display) and not routed.error:
+            display = "The selected model did not return a useful answer. Please try again."
+            tagged_mood = "thinking"
+            routed.error = "selected provider returned a low-quality reply"
+            routed.fallback_used = True
+
         used_fallback = is_effectively_empty(display)
         if used_fallback:
-            display = "Ollama is unavailable. local tiny brain can't explain that well." if classified.category == "complex_chat" else random.choice(FALLBACKS)
-            tagged_mood = "sleepy" if "eepy" in display else "idle"
+            selected = self.model_router.selected_provider().title()
+            display = f"{selected} could not answer. The selected provider was not changed."
+            tagged_mood = "thinking"
         print(f"FINAL_REPLY_TIME_MS: {(time.perf_counter() - router_start) * 1000:.1f}")
         self.health.record_reply(
             (time.perf_counter() - route_started) * 1000,
@@ -3745,6 +3734,15 @@ class FibiCore:
         display, expression = self.response_pipeline.clean_model_reply(raw)
         print("CLEANED DISPLAY: [model response omitted]")
         return display, expression
+
+    @staticmethod
+    def _is_low_quality_model_reply(text: str) -> bool:
+        """Reject empty and character-only replies on meaningful model routes."""
+
+        if is_effectively_empty(text):
+            return True
+        normalized = re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+        return normalized in CUTE_ONLY_MODEL_REPLIES
 
     def _finish(
         self,
@@ -4572,6 +4570,10 @@ class FibiCore:
 
     def _relevant_memories(self, user_message: str) -> list[Memory]:
         memories = [self._rag_result_to_memory(result) for result in self.memory_router.retrieve_relevant(user_message, top_k=6)]
+        legacy_memories = self.memory.retrieve(user_message, limit=6)
+        if user_message.lower().startswith("what do you remember") and legacy_memories:
+            self._last_referenced_memory_id = legacy_memories[0].id
+            self._last_referenced_memory_is_legacy = True
         projects = [
             self._rag_result_to_memory(result)
             for result in self.memory_router.rag_memory.retrieve_relevant(
@@ -4580,12 +4582,13 @@ class FibiCore:
                 top_k=3,
             )
         ]
-        seen: set[int | None] = set()
+        seen: set[str] = set()
         combined: list[Memory] = []
-        for memory in [*memories, *projects]:
-            if memory.id in seen:
+        for memory in [*memories, *legacy_memories, *projects]:
+            key = re.sub(r"\s+", " ", memory.content.lower()).strip()
+            if key in seen:
                 continue
-            seen.add(memory.id)
+            seen.add(key)
             combined.append(memory)
         return combined[:8]
 

@@ -26,14 +26,14 @@ def assert_not_tiny_thought(text: str) -> None:
 def run() -> None:
     classifier = FastResponseClassifier()
     assert classifier.classify("hi").category == "greeting"
-    assert classifier.classify("how are you?").category == "social_checkin"
+    assert classifier.classify("how are you?").category == "complex_chat"
     assert classifier.classify("What is Python?").category == "complex_chat"
     assert classifier.classify("explain this code").category == "complex_chat"
     assert classifier.classify("how do I fix this error?").category == "complex_chat"
     assert classifier.classify("this unknown sentence has more than four words").category == "complex_chat"
-    assert classifier.classify("what do you remember about me?").category == "memory_command"
-    assert classifier.classify("it worked").category == "success"
-    assert classifier.classify("this is broken").category == "frustration"
+    assert classifier.classify("what do you remember about me?").category == "complex_chat"
+    assert classifier.classify("it worked").category == "simple_chat"
+    assert classifier.classify("this is broken").category == "simple_chat"
 
     micro = LocalMicroBrain()
     for _ in range(20):
@@ -60,8 +60,8 @@ def run() -> None:
 
         simple = core.respond("how are you?")
         assert_not_tiny_thought(simple.display_text)
-        assert simple.model_used == "local-micro-brain"
-        assert model.calls == 0
+        assert simple.model_used == "counting-model"
+        assert model.calls == 1
 
         calls_before_complex = model.calls
         complex_reply = core.respond("What is Python?")

@@ -55,7 +55,7 @@ class ModelEngine:
                     "model": model,
                     "prompt": prompt,
                     "stream": False,
-                    "options": {"num_predict": 60, "temperature": 0.8, "top_p": 0.9},
+                    "options": {"num_predict": 320, "temperature": 0.8, "top_p": 0.9},
                 },
                 timeout=OLLAMA_TIMEOUT_SECONDS,
             )
