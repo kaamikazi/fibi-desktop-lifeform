@@ -62,14 +62,17 @@ The goal is not to claim consciousness or autonomy. The goal is a more durable d
 
 ### Compact Desktop Pet
 
-- Fibi starts in a compact `380x460` pet window with the character, speech
-  bubble, input row, and provider badge visible.
-- Clicking or right-clicking Fibi opens Chat, Settings, Memory, Commands,
-  Browser, Workflows, Health, Hide, and Exit destinations on demand.
-- Expanded chat mode and the last valid desktop position are saved locally.
-- The chat input expands while Mic and Send keep stable, non-overlapping sizes.
-- A state-driven badge shows local, Gemini, or fallback mode without exposing
-  credentials or provider context.
+- `python app.py` starts the transparent `200x220` Fibi Pet shell by default.
+  Only the character and a temporary wrapping speech bubble occupy the desktop.
+- Click or right-click Fibi for Talk, Wake mode, Provider, Memory, Actions,
+  Settings, Control Center, Hide, and Exit. Double-click opens the transient
+  text/push-to-talk panel; it closes after inactivity.
+- Dragging saves the last valid screen position. Always-on-top remains an
+  explicit setting.
+- The full `Fibi Control Center` opens lazily from the pet menu and reuses the
+  exact same core, memory, provider, voice, action, and permission services.
+- Settings > General includes `Start Fibi Pet with Windows`. The Startup-folder
+  launcher is changed only when the user changes this setting and clicks Save.
 
 ### Safe Manual Computer Control
 

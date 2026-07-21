@@ -1710,6 +1710,7 @@ class AppSettings:
     automatic_provider_fallback: bool = False
     window_mode: str = "compact"
     reply_style: str = "concise"
+    start_pet_with_windows: bool = False
 
 
 @dataclass(slots=True)

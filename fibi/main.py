@@ -7,7 +7,7 @@ import sys
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication
 
-from fibi.ui.fibi_window import FibiWindow
+from fibi.ui.fibi_pet_window import FibiPetWindow
 
 
 def main(gui_smoke: bool = False) -> int:
@@ -15,19 +15,16 @@ def main(gui_smoke: bool = False) -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("Fibi")
 
-    window = FibiWindow()
+    window = FibiPetWindow()
     if gui_smoke:
         required = [
             "sprite",
             "bubble",
-            "provider_badge",
             "microphone_indicator",
-            "input_bar",
+            "chat_panel",
             "chat_input",
             "mic_button",
             "send_button",
-            "menu_button",
-            "collapse_button",
             "core",
         ]
         missing = [name for name in required if not hasattr(window, name)]
@@ -35,10 +32,9 @@ def main(gui_smoke: bool = False) -> int:
             print("GUI_SMOKE_FAILED missing: " + ", ".join(missing))
             return 1
         menu_labels = [action.text() for action in window._build_pet_menu().actions() if not action.isSeparator()]
-        expected = {"Chat", "Settings", "Memory", "Commands", "Browser", "Workflows", "Health", "Hide", "Exit"}
-        expected_size = FibiWindow.EXPANDED_SIZE if window.window_mode == "expanded" else FibiWindow.COMPACT_SIZE
-        if window.size() != expected_size or set(menu_labels) != expected:
-            print("GUI_SMOKE_FAILED compact pet contract")
+        expected = {"Talk", "Wake mode", "Provider", "Memory", "Actions", "Settings", "Control Center", "Hide", "Exit"}
+        if not (140 <= window.width() <= 220) or set(menu_labels) != expected:
+            print("GUI_SMOKE_FAILED lightweight pet contract")
             return 1
         print("GUI_SMOKE_OK")
         QTimer.singleShot(50, app.quit)

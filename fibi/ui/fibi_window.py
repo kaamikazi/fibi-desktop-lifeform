@@ -82,7 +82,7 @@ def _asset_path(expression: str) -> Path | None:
 class FibiSprite(QWidget):
     """Animated chibi image that can switch expressions."""
 
-    def __init__(self, life: LifeEngine) -> None:
+    def __init__(self, life: LifeEngine, *, compact: bool = False) -> None:
         super().__init__()
         self.life = life
         self.expression = "idle"
@@ -99,7 +99,10 @@ class FibiSprite(QWidget):
         self._motion_started_at = 0.0
         self.pixmaps = self._load_pixmaps()
 
-        self.setMinimumSize(190, 280)
+        if compact:
+            self.setMinimumSize(120, 145)
+        else:
+            self.setMinimumSize(190, 280)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         self.animation_timer = QTimer(self)
@@ -142,6 +145,11 @@ class FibiSprite(QWidget):
 
     def set_expression(self, expression: str, temporary_ms: int = 0, force: bool = False) -> None:
         """Switch expression, falling back to idle when the PNG is missing."""
+        expression = {
+            "listening": "thinking",
+            "error": "angry",
+            "excited": "happy",
+        }.get(expression, expression)
         if temporary_ms:
             selected = self.expression_controller.show_temporary(expression, temporary_ms)
         else:
@@ -607,6 +615,7 @@ class FibiSettingsDialog(QDialog):
         privacy = self.core.privacy.settings
         general_layout = add_tab("General", "Desktop presence", [
             ("start_minimized", "Start minimized", settings.start_minimized),
+            ("start_pet_with_windows", "Start Fibi Pet with Windows", settings.start_pet_with_windows),
             ("minimize_to_tray", "Minimize to tray", settings.minimize_to_tray),
             ("always_on_top", "Always on top", settings.always_on_top),
             ("click_through_mode", "Click-through mode", settings.click_through_mode),
@@ -876,8 +885,11 @@ class FibiSettingsDialog(QDialog):
         """
 
     def _save(self) -> None:
+        previous_autostart = self.core.app_settings.settings.start_pet_with_windows
+        requested_autostart = self.checks["start_pet_with_windows"].isChecked()
         self.core.update_settings(
             start_minimized=self.checks["start_minimized"].isChecked(),
+            start_pet_with_windows=requested_autostart,
             minimize_to_tray=self.checks["minimize_to_tray"].isChecked(),
             always_on_top=self.checks["always_on_top"].isChecked(),
             click_through_mode=self.checks["click_through_mode"].isChecked(),
@@ -887,6 +899,11 @@ class FibiSettingsDialog(QDialog):
             automatic_provider_fallback=self.provider_fallback_checkbox.isChecked(),
             reply_style=str(self.reply_style_combo.currentData()),
         )
+        if requested_autostart != previous_autostart:
+            if requested_autostart:
+                self.core.autostart.enable(confirm=True)
+            else:
+                self.core.autostart.disable()
         self.core.tts_manager.speak_utility_replies = self.checks["speak_utility_replies"].isChecked()
         wake_enabled = self.checks["wake_word_enabled"].isChecked()
         self.core.update_voice_settings(
@@ -1280,15 +1297,24 @@ class FibiMemoryReviewDialog(QDialog):
 
 
 class FibiWindow(QWidget):
-    """Always-on-top floating assistant window."""
+    """Full Fibi Control Center window."""
 
     COMPACT_SIZE = QSize(380, 460)
     EXPANDED_SIZE = QSize(560, 620)
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        core: FibiCore | None = None,
+        life: LifeEngine | None = None,
+        *,
+        control_center: bool = False,
+        startup_surface: bool = False,
+    ) -> None:
         super().__init__()
-        self.life = LifeEngine()
-        self.core = FibiCore(life=self.life)
+        self._control_center = control_center
+        self.life = life or (core.life if core is not None else LifeEngine())
+        self.core = core or FibiCore(life=self.life)
+        self._owns_core = core is None
         self.chat_history: list[dict[str, str]] = []
         self.drag_offset: QPoint | None = None
         self._press_global: QPoint | None = None
@@ -1305,24 +1331,32 @@ class FibiWindow(QWidget):
         self.health_dialog: FibiHealthDialog | None = None
         self.command_center_dialog: FibiCommandCenterDialog | None = None
         self.memory_review_dialog: FibiMemoryReviewDialog | None = None
-        self.window_mode = self.core.app_settings.settings.window_mode
+        self.window_mode = "expanded" if control_center else self.core.app_settings.settings.window_mode
 
         self._setup_window()
         self._build_ui()
-        self._setup_tray()
+        if not control_center:
+            self._setup_tray()
         self._connect_signals()
         self._move_to_saved_or_bottom_right()
 
         self.idle_timer = QTimer(self)
         self.idle_timer.timeout.connect(self._idle_quirk)
-        self.idle_timer.start(5000)
-
-        QTimer.singleShot(700, self._greet)
-        QTimer.singleShot(1000, self._sync_wake_listener)
-        if not self.core.app_settings.settings.setup_complete:
-            QTimer.singleShot(900, self._show_first_run)
+        if not control_center:
+            self.idle_timer.start(5000)
+            QTimer.singleShot(700, self._greet)
+            QTimer.singleShot(1000, self._sync_wake_listener)
+            if startup_surface and not self.core.app_settings.settings.setup_complete:
+                QTimer.singleShot(900, self._show_first_run)
 
     def _setup_window(self) -> None:
+        if self._control_center:
+            self.setWindowTitle("Fibi Control Center")
+            self.setWindowFlags(Qt.WindowType.Window)
+            self.setMinimumSize(self.COMPACT_SIZE)
+            self.resize(self.EXPANDED_SIZE)
+            self.setAcceptDrops(True)
+            return
         self.setWindowTitle("Fibi")
         flags = Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool
         if self.core.app_settings.settings.always_on_top:
@@ -1508,8 +1542,9 @@ class FibiWindow(QWidget):
         self.pet_menu = self._build_pet_menu()
 
         # These areas are safe handles for moving the floating window around.
-        for widget in (self, self.sprite, self.bubble, self.name_label):
-            widget.installEventFilter(self)
+        if not self._control_center:
+            for widget in (self, self.sprite, self.bubble, self.name_label):
+                widget.installEventFilter(self)
 
     def _build_pet_menu(self) -> QMenu:
         """Build the small on-demand menu shared by sprite and menu button."""
@@ -1547,6 +1582,7 @@ class FibiWindow(QWidget):
     def _expand_chat(self) -> None:
         self._set_window_mode("expanded")
         self.chat_input.setFocus()
+        QTimer.singleShot(0, self.chat_input.setFocus)
 
     def _collapse_chat(self) -> None:
         self._set_window_mode("compact")
@@ -1854,6 +1890,8 @@ class FibiWindow(QWidget):
             display()
 
     def _sync_wake_listener(self) -> None:
+        if self._control_center:
+            return
         enabled = bool(
             self.core.voice_settings.settings.allow_voice_input
             and self.core.voice_settings.settings.wake_word_enabled
@@ -2062,6 +2100,10 @@ class FibiWindow(QWidget):
             self._set_context_chip(last.title)
 
     def closeEvent(self, event) -> None:  # noqa: N802 - PyQt method name
+        if self._control_center and not self._owns_core:
+            self.hide()
+            event.accept()
+            return
         if (
             not self._quitting
             and self.core.app_settings.settings.minimize_to_tray
@@ -2072,7 +2114,7 @@ class FibiWindow(QWidget):
             event.ignore()
             return
         self._wake_stop.set()
-        goodbye = self.core.shutdown()
+        goodbye = self.core.shutdown() if self._owns_core else None
         if goodbye:
             print(f"FIBI GOODBYE: {goodbye.text}")
         if self.tray_icon:

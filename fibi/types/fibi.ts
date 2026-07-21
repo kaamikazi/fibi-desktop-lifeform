@@ -1381,6 +1381,7 @@ export interface AppSettings {
   automaticProviderFallback: boolean;
   windowMode: "compact" | "expanded";
   replyStyle: "concise" | "normal" | "detailed";
+  startPetWithWindows: boolean;
 }
 
 export interface TrayAction {
