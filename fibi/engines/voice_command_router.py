@@ -20,7 +20,7 @@ class VoiceCommandRouter:
     ) -> VoiceCommandResult:
         if not settings.allow_voice_input:
             return VoiceCommandResult(True, False, response_text="ears tucked away.", error="voice disabled", source=transcription.source)
-        if transcription.source == "future_wake_word" and not settings.wake_word_enabled:
+        if transcription.source in {"future_wake_word", "wake_word_command"} and not settings.wake_word_enabled:
             return VoiceCommandResult(True, False, response_text="wake word sleeping.", error="wake word disabled", source=transcription.source)
         if transcription.error:
             return VoiceCommandResult(True, False, response_text=transcription.error, error=transcription.error, source=transcription.source)

@@ -21,6 +21,7 @@ def main(gui_smoke: bool = False) -> int:
             "sprite",
             "bubble",
             "provider_badge",
+            "microphone_indicator",
             "input_bar",
             "chat_input",
             "mic_button",

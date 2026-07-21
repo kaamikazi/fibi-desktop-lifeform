@@ -67,13 +67,54 @@ class RAGMemoryService:
         provenance: dict | None = None,
         expires_at: str = "",
         allow_duplicate: bool = False,
+        memory_key: str = "",
+        allow_sensitive_update: bool = False,
     ) -> RAGMemory:
+        memory_metadata = dict(metadata or {})
+        if memory_key:
+            memory_metadata["memory_key"] = memory_key
+            existing_key = self.repository.get_by_memory_key(memory_key)
+            if existing_key is not None:
+                if self.repository.content_hash(existing_key.content) == self.repository.content_hash(content):
+                    return existing_key
+                sensitive = str(existing_key.metadata.get("sensitive_flag", ""))
+                if sensitive and not allow_sensitive_update:
+                    raise PermissionError("sensitive memory requires explicit review before replacement")
+                merged_metadata = {**existing_key.metadata, **memory_metadata}
+                merged_metadata["contradiction_updated"] = True
+                updated = self.update_memory(
+                    int(existing_key.id),
+                    content=content,
+                    category=category,
+                    importance=max(existing_key.importance, importance),
+                    confidence=confidence,
+                    metadata=merged_metadata,
+                    source=source,
+                    provenance={**existing_key.provenance, **(provenance or {}), "updated_by_memory_key": memory_key},
+                )
+                if updated is None:
+                    raise RuntimeError("structured memory update failed")
+                return updated
         duplicate = self.detect_duplicate(content)
         if duplicate.is_duplicate and not allow_duplicate and duplicate.existing_id is not None:
             LOGGER.info("RAG duplicate detected: existing=%s similarity=%.3f", duplicate.existing_id, duplicate.similarity)
             existing = self.repository.get(duplicate.existing_id)
             if existing is None:
                 raise RuntimeError("duplicate memory disappeared during add")
+            if existing.category == "temporary_context" and category != "temporary_context":
+                promoted = self.update_memory(
+                    int(existing.id),
+                    category=category,
+                    importance=importance,
+                    confidence=confidence,
+                    metadata=memory_metadata,
+                    source=source,
+                    provenance=provenance or {},
+                    expires_at="",
+                )
+                if promoted is None:
+                    raise RuntimeError("failed to promote temporary memory")
+                return promoted
             return existing
         memory = RAGMemory(
             id=None,
@@ -86,7 +127,7 @@ class RAGMemoryService:
             source_timestamp=source_timestamp,
             importance=importance,
             confidence=confidence,
-            metadata=metadata or {},
+            metadata=memory_metadata,
             provenance=provenance or {},
             expires_at=expires_at,
         )
@@ -172,7 +213,7 @@ class RAGMemoryService:
                 continue
             if category_set and memory.category not in category_set:
                 continue
-            score = self.score_memory(memory, similarity) * self.config.hybrid_vector_weight
+            score = self.score_memory(memory, similarity, cleaned) * self.config.hybrid_vector_weight
             combined[memory_id] = RAGSearchResult(memory, similarity, score, 0)
         for memory, keyword_score in self.repository.search_lexical(rewritten, max(limit * 3, limit)):
             if memory.id is None:
@@ -182,7 +223,10 @@ class RAGMemoryService:
             extra = keyword_score * self.config.hybrid_keyword_weight
             existing = combined.get(memory.id)
             if existing is None:
-                combined[memory.id] = RAGSearchResult(memory, 0.0, extra, 0)
+                memory_embedding = self.embedding_provider.embed([memory.content])[0]
+                semantic_similarity = max(0.0, float(np.dot(query_embedding[0], memory_embedding)))
+                score = self.score_memory(memory, semantic_similarity, cleaned) * self.config.hybrid_vector_weight + extra
+                combined[memory.id] = RAGSearchResult(memory, semantic_similarity, score, 0)
             else:
                 existing.score += extra
         results = list(combined.values())
@@ -221,26 +265,45 @@ class RAGMemoryService:
         exact = self.repository.get_by_hash(self.repository.content_hash(cleaned))
         if exact is not None:
             return DuplicateCheck(True, exact.id, 1.0, "exact_hash")
-        results = self.search_memories(
-            cleaned,
-            top_k=1,
-            similarity_threshold=self.config.duplicate_threshold,
-        )
-        if results:
-            top = results[0]
-            return DuplicateCheck(True, top.memory.id, top.similarity, "embedding_similarity")
+        query_embedding = self.embedding_provider.embed([cleaned])
+        nearest = self.vector_store.search(query_embedding, 1)
+        if nearest and nearest[0][1] >= self.config.duplicate_threshold:
+            memory_id, similarity = nearest[0]
+            return DuplicateCheck(True, memory_id, similarity, "embedding_similarity")
         return DuplicateCheck(False, None, 0.0, "none")
 
-    def score_memory(self, memory: RAGMemory, similarity: float) -> float:
+    def score_memory(self, memory: RAGMemory, similarity: float, query: str = "") -> float:
         recency = self._recency_score(memory.updated_at or memory.created_at)
         importance = max(0.0, min(1.0, memory.importance))
         confidence = max(0.0, min(1.0, memory.confidence))
+        category_relevance = 1.0 if memory.category in self._relevant_categories(query) else 0.0
         return (
-            similarity * 0.62
-            + importance * 0.18
+            similarity * 0.55
+            + importance * 0.17
             + confidence * 0.12
             + recency * 0.08
+            + category_relevance * 0.08
         )
+
+    @staticmethod
+    def _relevant_categories(query: str) -> set[str]:
+        lowered = query.lower()
+        categories: set[str] = set()
+        if any(word in lowered for word in ("sister", "brother", "mother", "father", "partner", "friend", "family")):
+            categories.add("relationship")
+        if any(word in lowered for word in ("prefer", "favorite", "like", "love")):
+            categories.add("preference")
+        if any(word in lowered for word in ("project", "building", "working on")):
+            categories.add("project")
+        if any(word in lowered for word in ("goal", "want to", "plan")):
+            categories.add("goal")
+        if any(word in lowered for word in ("decide", "decision", "chose")):
+            categories.add("decision")
+        if any(word in lowered for word in ("name", "about me", "who am i")):
+            categories.add("user_fact")
+        if any(word in lowered for word in ("event", "happened", "important")):
+            categories.update({"event", "important_event"})
+        return categories
 
     def rebuild_index(self) -> None:
         memories = self.repository.list_active()

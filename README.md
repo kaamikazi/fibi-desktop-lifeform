@@ -92,10 +92,23 @@ The goal is not to claim consciousness or autonomy. The goal is a more durable d
 ### Reply Length
 
 - Settings > Behavior offers Concise, Normal, and Detailed reply styles.
-- Concise is the default: direct answers use 1-3 short sentences and normally
-  stay below 60 words unless the user explicitly asks for detail.
+- Concise is the default: direct answers use at most two short sentences or 45
+  words; simple questions are capped at 20 words.
+- Explicit requests such as `explain deeply`, `give details`, or `full
+  explanation` may exceed the concise cap.
 - The same response policy is applied to local Ollama and optional Gemini
   prompts, then enforced before display, memory, and speech output.
+
+### Local Wake Word
+
+- Wake Word Mode is off by default and can only be enabled in Settings > Voice
+  or with `/wake on`. Use `/wake off` and `/wake status` to control it.
+- Detection for `oi fibi` uses the existing local PocketSphinx path. Background
+  audio is not sent to Gemini and is never saved to disk.
+- A visible `MIC: WAKE` or `MIC: LISTEN` badge shows whenever the microphone is
+  active. Push-to-talk remains available through the Mic button or `/listen`.
+- Detection captures one follow-up command, stops at silence/timeout, and routes
+  the transcript through Fibi's normal command and chat safety pipeline.
 
 ### Conversation and Gemini Hotfix
 
@@ -155,6 +168,24 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for deeper engine boundaries.
 ## User-Owned Memory
 
 Fibi can remember, but the user owns the notebook.
+
+Fibi extracts only explicit, useful facts into structured local categories:
+user facts, preferences, relationships, projects, decisions, goals, and
+important events. Ordinary chat is retained only as expiring temporary context,
+not permanent memory.
+
+Retrieval combines local semantic similarity, lexical overlap, recency,
+importance, confidence, and category relevance. The best five memories are
+considered for a model request. Stable memory keys update non-sensitive
+contradictions in place; sensitive memories still require review.
+
+```text
+/memory remember <fact>
+/memory recall <topic>
+/memory forget <topic>
+/memory recent
+/memory stats
+```
 
 v0.30 adds a Memory Review Center with controls to:
 

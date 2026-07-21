@@ -8,6 +8,12 @@ from enum import Enum
 
 class MemoryCategory(str, Enum):
     FACT = "fact"
+    USER_FACT = "user_fact"
+    PREFERENCE = "preference"
+    RELATIONSHIP = "relationship"
+    DECISION = "decision"
+    IMPORTANT_EVENT = "important_event"
+    TEMPORARY_CONTEXT = "temporary_context"
     EVENT = "event"
     PROJECT = "project"
     HABIT = "habit"

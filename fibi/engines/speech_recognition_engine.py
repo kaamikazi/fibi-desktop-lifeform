@@ -8,7 +8,7 @@ from fibi.engines.types import VoiceDeviceInfo, VoiceInputSettings, VoiceTranscr
 
 
 class SpeechRecognitionEngine:
-    """Record a short phrase only after an explicit user listen request."""
+    """Transcribe a short in-memory phrase locally; audio is never persisted."""
 
     def listen(
         self,

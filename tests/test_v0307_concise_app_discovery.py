@@ -42,15 +42,16 @@ def test_concise_policy_limits_sentences_and_words() -> None:
     policy = ReplyStyleEngine()
     source = " ".join(f"Sentence {index} has several useful words." for index in range(1, 12))
     concise = policy.apply(source, "concise", "what is this?")
-    assert len(concise.split()) <= 60
-    assert concise.count(".") <= 3
-    assert "1-3 short sentences" in policy.instruction("concise", "what is this?")
+    assert len(concise.split()) <= 20
+    assert concise.count(".") <= 2
+    assert "2 short sentences" in policy.instruction("concise", "what is this?")
 
 
-def test_detailed_request_and_setting_are_not_concise_truncated() -> None:
+@pytest.mark.parametrize("detail_prompt", ["Explain this in detail", "Explain deeply", "Give details", "Full explanation"])
+def test_detailed_request_and_setting_are_not_concise_truncated(detail_prompt: str) -> None:
     policy = ReplyStyleEngine()
     source = " ".join(f"Useful sentence {index}." for index in range(12))
-    assert policy.apply(source, "concise", "Explain this in detail") == source
+    assert policy.apply(source, "concise", detail_prompt) == source
     assert policy.apply(source, "detailed", "Explain this") == source
 
 
@@ -69,8 +70,8 @@ def test_model_reply_is_bounded_by_selected_concise_policy(tmp_path: Path) -> No
     core, _ollama = _core_with_ollama(tmp_path, [long_reply])
     core.app_settings.update(reply_style="concise")
     response = core.respond("what is dependency injection?")
-    assert len(response.display_text.split()) <= 60
-    assert response.display_text.count(".") <= 3
+    assert len(response.display_text.split()) <= 20
+    assert response.display_text.count(".") <= 2
 
 
 def test_cloud_prompt_receives_concise_instruction() -> None:
@@ -81,7 +82,7 @@ def test_cloud_prompt_receives_concise_instruction() -> None:
         response_instruction=instruction,
     )
     assert "Response length:" in prompt
-    assert "no more than 60 words" in prompt
+    assert "45 words" in prompt
 
 
 def test_saved_registry_precedes_path_lookup(tmp_path: Path) -> None:

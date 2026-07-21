@@ -16,6 +16,12 @@ LOGGER = logging.getLogger(__name__)
 
 VALID_CATEGORIES = {
     "fact",
+    "user_fact",
+    "preference",
+    "relationship",
+    "decision",
+    "important_event",
+    "temporary_context",
     "event",
     "project",
     "habit",
@@ -279,6 +285,26 @@ class RAGMemoryRepository:
                 (source_id,),
             ).fetchone()
         return self._row_to_memory(row) if row else None
+
+    def get_by_memory_key(self, memory_key: str) -> RAGMemory | None:
+        if not memory_key:
+            return None
+        return next(
+            (memory for memory in self.list_active() if memory.metadata.get("memory_key") == memory_key),
+            None,
+        )
+
+    def list_recent(self, limit: int = 10, *, include_temporary: bool = False) -> list[RAGMemory]:
+        memories = self.list_active()
+        if not include_temporary:
+            memories = [memory for memory in memories if memory.category != "temporary_context"]
+        return sorted(memories, key=lambda memory: (memory.updated_at, memory.id or 0), reverse=True)[: max(1, limit)]
+
+    def category_counts(self) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for memory in self.list_active():
+            counts[memory.category] = counts.get(memory.category, 0) + 1
+        return counts
 
     def mark_accessed(self, memory_ids: list[int]) -> None:
         if not memory_ids:

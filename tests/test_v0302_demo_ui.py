@@ -66,6 +66,16 @@ def test_input_row_uses_layout_without_overlap(fibi_window: FibiWindow) -> None:
     assert input_rect.right() < mic_rect.left() < send_rect.left()
 
 
+def test_microphone_indicator_is_clear_for_wake_and_command_listening(fibi_window: FibiWindow) -> None:
+    fibi_window._set_microphone_state("wake")
+    assert fibi_window.microphone_indicator.isVisible()
+    assert fibi_window.microphone_indicator.text() == "MIC: WAKE"
+    fibi_window._set_microphone_state("command")
+    assert fibi_window.microphone_indicator.text() == "MIC: LISTEN"
+    fibi_window._set_microphone_state("")
+    assert not fibi_window.microphone_indicator.isVisible()
+
+
 def test_minimum_window_and_character_are_not_clipped(fibi_window: FibiWindow) -> None:
     minimum = fibi_window.minimumSize()
     assert minimum == FibiWindow.COMPACT_SIZE

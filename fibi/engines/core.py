@@ -9,7 +9,7 @@ import logging
 import os
 import uuid
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fibi.brain.cleanup import clean_response, extract_expression_markers, is_effectively_empty, remove_mood_tags, tts_safe_text
@@ -83,6 +83,7 @@ from fibi.engines.ritual_engine import RitualEngine
 from fibi.engines.repetition_guard import RepetitionGuard
 from fibi.engines.response_budget_engine import BUDGET_FALLBACKS, ResponseBudgetEngine
 from fibi.engines.reply_style_engine import ReplyStyleEngine
+from fibi.engines.structured_memory_engine import StructuredMemoryEngine
 from fibi.engines.route_decision_engine import RouteDecisionEngine
 from fibi.engines.routers import (
     ActionRouter,
@@ -110,6 +111,7 @@ from fibi.engines.voice_health_engine import VoiceHealthEngine
 from fibi.engines.voice_cache_engine import VoiceCacheEngine
 from fibi.engines.voice_skin_settings_engine import VoiceSkinSettingsEngine
 from fibi.engines.voice_settings_engine import VoiceSettingsEngine
+from fibi.engines.wake_word_engine import WakeWordEngine
 from fibi.engines.warmup_engine import WarmupEngine
 from fibi.engines.workflow_export_engine import WorkflowExportEngine
 from fibi.engines.workflow_recipe_engine import WorkflowRecipeEngine
@@ -313,6 +315,7 @@ class FibiCore:
         self.action_journal = action_journal or ActionJournalEngine()
         self.voice_settings = voice_settings or VoiceSettingsEngine(self.life.state_path)
         self.speech_recognition = speech_recognition or SpeechRecognitionEngine()
+        self.wake_word = WakeWordEngine(self.speech_recognition)
         self.voice_router = voice_router or VoiceCommandRouter(self.action_intents)
         self.voice_transcript_router = VoiceRouter(self.voice_router)
         self.voice_health = voice_health or VoiceHealthEngine(self.speech_recognition)
@@ -360,6 +363,7 @@ class FibiCore:
         self.memory_review = MemoryReviewEngine(self.memory_router.rag_memory, guard=self.sensitive_memory_guard)
         self.response_pipeline = ResponsePipeline()
         self.reply_style = ReplyStyleEngine()
+        self.structured_memory = StructuredMemoryEngine()
         self._last_referenced_memory_id: int | None = None
         self._last_referenced_memory_is_legacy = False
         self._cancel_requested = False
@@ -429,10 +433,20 @@ class FibiCore:
     def start_voice_listen(self, source: str = "slash_command") -> FibiResponse:
         if not self.voice_settings.settings.allow_voice_input:
             return self._local_response("ears tucked away.", "sleepy").response
-        if source == "future_wake_word" and not self.voice_settings.settings.wake_word_enabled:
+        if source in {"future_wake_word", "wake_word_command"} and not self.voice_settings.settings.wake_word_enabled:
             return self._local_response("wake word sleeping.", "sleepy").response
         transcription = self.speech_recognition.listen(self.voice_settings.settings, source=source)
         return self.handle_voice_transcript(transcription)
+
+    def listen_for_wake_once(self) -> tuple[bool, VoiceTranscriptionResult]:
+        if not self.voice_settings.settings.wake_word_enabled:
+            return False, VoiceTranscriptionResult(error="wake word disabled", source="wake_word_probe")
+        return self.wake_word.listen_once(self.voice_settings.settings)
+
+    def capture_wake_command(self) -> FibiResponse:
+        if not self.voice_settings.settings.wake_word_enabled:
+            return self._local_response("Wake word mode is off.", "sleepy").response
+        return self.handle_voice_transcript(self.wake_word.capture_command(self.voice_settings.settings))
 
     def cancel_voice_listen(self) -> FibiResponse:
         return self._local_response("ears canceled.", "sleepy").response
@@ -1923,7 +1937,7 @@ class FibiCore:
         if skin.handled:
             return skin
         if lowered == "/voice input on confirm":
-            self.voice_settings.update(allow_voice_input=True, push_to_talk_enabled=True, wake_word_enabled=False)
+            self.voice_settings.update(allow_voice_input=True, push_to_talk_enabled=True)
             return self._local_response("ears enabled. push-to-talk only.", "happy")
         if lowered == "/voice input off":
             self.voice_settings.update(allow_voice_input=False)
@@ -1940,10 +1954,19 @@ class FibiCore:
             return self._local_response(f"mic creatures: {names}.", "thinking")
         if lowered == "/mic test":
             return self._local_response(self.voice_health.mic_test(self.voice_settings.settings), "thinking")
-        if lowered in {"/wake word status", "/wake word off"}:
-            if lowered == "/wake word off":
-                self.voice_settings.update(wake_word_enabled=False)
-            return self._local_response("wake word sleeping.", "sleepy")
+        if lowered in {"/wake status", "/wake word status"}:
+            enabled = self.voice_settings.settings.wake_word_enabled
+            return self._local_response("Wake word mode is on: oi fibi." if enabled else "Wake word mode is off.", "thinking")
+        if lowered in {"/wake on", "/wake word on"}:
+            self.voice_settings.update(
+                allow_voice_input=True,
+                wake_word_enabled=True,
+                save_voice_audio=False,
+            )
+            return self._local_response("Wake word mode on: oi fibi.", "happy")
+        if lowered in {"/wake off", "/wake word off"}:
+            self.voice_settings.update(wake_word_enabled=False, save_voice_audio=False)
+            return self._local_response("Wake word mode is off.", "sleepy")
         return LocalCommandResult(False)
 
     def _handle_voice_skin_command(self, text: str, lowered: str) -> LocalCommandResult:
@@ -2940,6 +2963,38 @@ class FibiCore:
         return FibiResponse(text, tts_safe_text(text), mood, model_used, used_fallback, timing, motion, priority)
 
     def _handle_memory_review_command(self, text: str, lowered: str) -> LocalCommandResult:
+        if lowered.startswith("/memory remember "):
+            fact = text[len("/memory remember "):].strip()
+            return self._remember_explicit_memory(fact)
+        if lowered.startswith("/memory recall "):
+            topic = text[len("/memory recall "):].strip()
+            results = self.memory_router.retrieve_relevant(topic, top_k=5)
+            if not results:
+                return self._local_response("I don't have a matching memory.", "thinking", tts_priority="silent")
+            recalled = "; ".join(result.memory.content for result in results[:5])
+            return self._local_response(f"I remember: {recalled}", "thinking", results[0].memory.id, tts_priority="silent")
+        if lowered.startswith("/memory forget "):
+            topic = text[len("/memory forget "):].strip()
+            results = self.memory_router.retrieve_relevant(topic, top_k=1)
+            if not results or results[0].memory.id is None:
+                return self._local_response("No matching memory found.", "thinking", tts_priority="silent")
+            memory = results[0].memory
+            self._pending_memory_delete = MemoryDeleteRequest(memory_id=memory.id, reason=f"forget_topic:{topic}")
+            return self._local_response(
+                f"Forget staged: {memory.content} Say: memory delete confirm",
+                "thinking",
+                memory.id,
+                tts_priority="silent",
+            )
+        if lowered == "/memory recent":
+            recent = self.memory_router.rag_memory.service.repository.list_recent(limit=5)
+            text_value = "; ".join(memory.content for memory in recent) if recent else "No long-term memories yet."
+            return self._local_response(text_value, "thinking", recent[0].id if recent else None, tts_priority="silent")
+        if lowered == "/memory stats":
+            counts = self.memory_router.rag_memory.service.repository.category_counts()
+            total = sum(counts.values())
+            details = ", ".join(f"{category}: {count}" for category, count in sorted(counts.items())) or "empty"
+            return self._local_response(f"Memory stats: {total} active. {details}.", "thinking", tts_priority="silent")
         if lowered in {"/memories", "/memory list"}:
             items = self.memory_review.list_memories(limit=10)
             first_id = items[0].memory_id if items else None
@@ -3065,6 +3120,32 @@ class FibiCore:
             self.memory_consent.update(require_approval_for_sensitive_memory=False)
             return self._local_response("sensitive approval off. secrets still blocked.", "thinking", tts_priority="silent")
         return LocalCommandResult(False)
+
+    def _remember_explicit_memory(self, fact: str) -> LocalCommandResult:
+        if not fact:
+            return self._local_response("Use /memory remember <fact>.", "thinking", tts_priority="silent")
+        extracted = self.structured_memory.for_explicit_remember(fact)
+        risk = self._memory_write_risk(extracted.content, source=f"manual:{extracted.category}", user_requested=True)
+        if risk is None:
+            return self._local_response("That memory was blocked by consent or privacy rules.", "sleepy", tts_priority="silent")
+        try:
+            memory = self.memory_router.rag_memory.service.add_memory(
+                extracted.content,
+                category=extracted.category,
+                importance=extracted.importance,
+                confidence=extracted.confidence,
+                source="manual_user_memory",
+                memory_key=extracted.memory_key,
+                metadata={
+                    "learned_from": "explicit_memory_command",
+                    "sensitive_flag": risk.sensitive_flag,
+                    "review": {"sensitive_flag": risk.sensitive_flag, "summary": risk.safe_summary},
+                },
+                provenance={"route": "memory_command"},
+            )
+        except PermissionError:
+            return self._local_response("Sensitive memory needs review before replacement.", "thinking", tts_priority="silent")
+        return self._local_response("Memory saved.", "happy", memory.id, tts_priority="silent")
 
     @staticmethod
     def _parse_memory_id(text: str) -> int | None:
@@ -3518,6 +3599,9 @@ class FibiCore:
         learned_ids = self._learn_from_message_rag(user_message) if self.privacy.settings.allow_memory_learning else []
         memories = self._relevant_memories(user_message)
         related_project = self._related_project(memories, user_message)
+        memory_answer = self._direct_structured_memory_answer(user_message, memories, observation, related_project)
+        if memory_answer is not None:
+            return memory_answer
         self._journal_user_message(user_message, observation, related_project)
         if learned_ids:
             self._journal_record(
@@ -4544,9 +4628,12 @@ class FibiCore:
         try:
             self.memory_router.rag_memory.service.add_memory(
                 content,
-                category="conversation",
+                category="temporary_context",
                 source=f"conversation:{role}",
-                metadata={"role": role, "mood": mood or "", "review": {"sensitive_flag": risk.sensitive_flag, "summary": risk.safe_summary}},
+                importance=0.15,
+                confidence=0.55,
+                expires_at=(datetime.now(timezone.utc) + timedelta(hours=24)).isoformat(),
+                metadata={"role": role, "mood": mood or "", "temporary": True, "review": {"sensitive_flag": risk.sensitive_flag, "summary": risk.safe_summary}},
                 provenance={"route": "fibi_core", "memory_write": "conversation"},
             )
             LOGGER.info("memory_retrieval.conversation_saved", extra={"role": role})
@@ -4556,31 +4643,25 @@ class FibiCore:
     def _learn_from_message_rag(self, user_message: str) -> list[int]:
         if self._memory_write_risk(user_message, source="conversation") is None:
             return []
-        patterns = [
-            (MemoryCategory.FACT, r"\bmy name is\s+([^.!?]+)", 0.9),
-            (MemoryCategory.PROJECT, r"\b(?:working on|building)\s+([^.!?]+)", 0.8),
-            (MemoryCategory.GOAL, r"\b(?:i want to|my goal is)\s+([^.!?]+)", 0.8),
-            (MemoryCategory.HABIT, r"\bi (?:usually|often|always)\s+([^.!?]+)", 0.7),
-            (MemoryCategory.BELIEF, r"\bi believe\s+([^.!?]+)", 0.8),
-        ]
         saved_ids: list[int] = []
-        for category, pattern, importance in patterns:
-            match = re.search(pattern, user_message, re.IGNORECASE)
-            if not match:
-                continue
-            risk = self._memory_write_risk(match.group(0).strip(), source=f"conversation:{category.value}")
+        for extracted in self.structured_memory.extract(user_message):
+            risk = self._memory_write_risk(extracted.content, source=f"conversation:{extracted.category}")
             if risk is None:
                 continue
             try:
                 memory = self.memory_router.rag_memory.service.add_memory(
-                    match.group(0).strip(),
-                    category=category.value,
-                    importance=importance,
-                    confidence=importance,
+                    extracted.content,
+                    category=extracted.category,
+                    importance=extracted.importance,
+                    confidence=extracted.confidence,
                     source="conversation",
-                    metadata={"learned_from": "direct_user_message", "review": {"sensitive_flag": risk.sensitive_flag, "summary": risk.safe_summary}},
-                    provenance={"route": "memory_router", "pattern": pattern},
+                    memory_key=extracted.memory_key,
+                    metadata={"learned_from": "direct_user_message", "sensitive_flag": risk.sensitive_flag, "review": {"sensitive_flag": risk.sensitive_flag, "summary": risk.safe_summary}},
+                    provenance={"route": "memory_router", "extractor": "structured_memory_v1"},
                 )
+            except PermissionError:
+                LOGGER.info("Sensitive contradiction was not overwritten", extra={"memory_key": extracted.memory_key})
+                continue
             except Exception:
                 LOGGER.exception("Failed to learn explicit memory through RAG")
                 continue
@@ -4659,28 +4740,53 @@ class FibiCore:
             )
 
     def _relevant_memories(self, user_message: str) -> list[Memory]:
-        memories = [self._rag_result_to_memory(result) for result in self.memory_router.retrieve_relevant(user_message, top_k=6)]
-        legacy_memories = self.memory.retrieve(user_message, limit=6)
+        memories = [self._rag_result_to_memory(result) for result in self.memory_router.retrieve_relevant(user_message, top_k=5)]
+        legacy_memories = self.memory.retrieve(user_message, limit=3)
         if user_message.lower().startswith("what do you remember") and legacy_memories:
             self._last_referenced_memory_id = legacy_memories[0].id
             self._last_referenced_memory_is_legacy = True
-        projects = [
-            self._rag_result_to_memory(result)
-            for result in self.memory_router.rag_memory.retrieve_relevant(
-                "project",
-                filters={"category": MemoryCategory.PROJECT.value},
-                top_k=3,
-            )
-        ]
         seen: set[str] = set()
         combined: list[Memory] = []
-        for memory in [*memories, *legacy_memories, *projects]:
+        for memory in [*memories, *legacy_memories]:
             key = re.sub(r"\s+", " ", memory.content.lower()).strip()
             if key in seen:
                 continue
             seen.add(key)
             combined.append(memory)
-        return combined[:8]
+        return combined[:5]
+
+    def _direct_structured_memory_answer(
+        self,
+        user_message: str,
+        memories: list[Memory],
+        observation: Observation,
+        related_project: str | None,
+    ) -> FibiResponse | None:
+        relation_query = re.search(
+            r"what does my\s+(sister|brother|mother|mom|father|dad|partner|wife|husband|friend|daughter|son)\s+"
+            r"(study|do|like|love)|where does my\s+(sister|brother|mother|mom|father|dad|partner|wife|husband|friend|daughter|son)\s+live",
+            user_message,
+            re.IGNORECASE,
+        )
+        if not relation_query:
+            return None
+        relation = next((part for part in relation_query.groups() if part), "")
+        for memory in memories:
+            if memory.category != MemoryCategory.RELATIONSHIP:
+                continue
+            if relation and relation.lower() not in memory.content.lower():
+                continue
+            answer = re.sub(r"^The user's", "Your", memory.content, flags=re.IGNORECASE)
+            return self._finish(
+                user_message,
+                answer,
+                "thinking",
+                "local-memory-recall",
+                False,
+                observation,
+                related_project,
+            )
+        return None
 
     @staticmethod
     def _rag_result_to_memory(result) -> Memory:

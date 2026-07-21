@@ -23,6 +23,10 @@ class QueryRewriter:
         "privacy": ["local", "cloud", "safe"],
         "fibi": ["desktop", "lifeform", "assistant"],
         "sleepy": ["eepy", "tired"],
+        "study": ["studies", "education"],
+        "studies": ["study", "education"],
+        "sister": ["family", "relationship"],
+        "brother": ["family", "relationship"],
     }
 
     def rewrite(self, query: str) -> str:

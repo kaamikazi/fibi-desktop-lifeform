@@ -1,5 +1,11 @@
 export type MemoryCategory =
   | "fact"
+  | "user_fact"
+  | "preference"
+  | "relationship"
+  | "decision"
+  | "important_event"
+  | "temporary_context"
   | "event"
   | "project"
   | "habit"

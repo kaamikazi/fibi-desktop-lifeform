@@ -11,6 +11,7 @@ pyautogui
 openai
 python-dotenv
 SpeechRecognition
+pocketsphinx
 numpy
 faiss-cpu
 google-genai>=1,<2

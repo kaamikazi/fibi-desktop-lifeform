@@ -67,6 +67,8 @@ class FibiBridge(QObject):
     voice_preparing = pyqtSignal(bool)
     speaking_started = pyqtSignal()
     speaking_finished = pyqtSignal(bool)
+    wake_detected = pyqtSignal()
+    microphone_state = pyqtSignal(str)
 
 def _asset_path(expression: str) -> Path | None:
     """Find an expression PNG in the supported asset folders."""
@@ -699,6 +701,7 @@ class FibiSettingsDialog(QDialog):
         voice_layout = add_tab("Voice", "Voice basics", [
             ("allow_tts", "TTS voice", privacy.allow_tts),
             ("allow_voice_input", "Voice input", self.core.voice_settings.settings.allow_voice_input),
+            ("wake_word_enabled", "Wake Word Mode: oi fibi (local)", self.core.voice_settings.settings.wake_word_enabled),
             ("allow_sounds", "Sounds", privacy.allow_sounds),
         ])
         processing_group = QGroupBox("Voice processing")
@@ -885,7 +888,12 @@ class FibiSettingsDialog(QDialog):
             reply_style=str(self.reply_style_combo.currentData()),
         )
         self.core.tts_manager.speak_utility_replies = self.checks["speak_utility_replies"].isChecked()
-        self.core.update_voice_settings(allow_voice_input=self.checks["allow_voice_input"].isChecked())
+        wake_enabled = self.checks["wake_word_enabled"].isChecked()
+        self.core.update_voice_settings(
+            allow_voice_input=self.checks["allow_voice_input"].isChecked() or wake_enabled,
+            wake_word_enabled=wake_enabled,
+            save_voice_audio=False,
+        )
         use_rvc = self.rvc_checkbox.isChecked()
         self.core.voice_skin_settings.update(allow_rvc_voice_skin=use_rvc, rvc_enabled=use_rvc)
         self.core.action_settings.update(allow_desktop_actions=self.checks["allow_desktop_actions"].isChecked())
@@ -910,6 +918,8 @@ class FibiSettingsDialog(QDialog):
         parent = self.parent()
         if parent is not None and hasattr(parent, "_refresh_provider_badge"):
             parent._refresh_provider_badge()
+        if parent is not None and hasattr(parent, "_sync_wake_listener"):
+            parent._sync_wake_listener()
         if self.checks["quiet_mode"].isChecked():
             self.core.boundary.enable_quiet(None, reason="settings")
         else:
@@ -1288,6 +1298,8 @@ class FibiWindow(QWidget):
         self._request_serial = 0
         self._quitting = False
         self._voice_listening = False
+        self._wake_stop = threading.Event()
+        self._wake_thread: threading.Thread | None = None
         self.bridge = FibiBridge(self)
         self.tray_icon: QSystemTrayIcon | None = None
         self.health_dialog: FibiHealthDialog | None = None
@@ -1306,6 +1318,7 @@ class FibiWindow(QWidget):
         self.idle_timer.start(5000)
 
         QTimer.singleShot(700, self._greet)
+        QTimer.singleShot(1000, self._sync_wake_listener)
         if not self.core.app_settings.settings.setup_complete:
             QTimer.singleShot(900, self._show_first_run)
 
@@ -1343,6 +1356,16 @@ class FibiWindow(QWidget):
         self.provider_badge.setMinimumHeight(24)
         self.provider_badge.setContentsMargins(6, 0, 6, 0)
         header_layout.addWidget(self.provider_badge)
+        self.microphone_indicator = QLabel("MIC")
+        self.microphone_indicator.setObjectName("microphoneIndicator")
+        self.microphone_indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.microphone_indicator.setToolTip("Microphone is listening locally")
+        self.microphone_indicator.setStyleSheet(
+            "background: rgba(255, 232, 240, 240); color: #8a2347; border: 1px solid #e69ab5; "
+            "border-radius: 6px; font: bold 7pt 'Segoe UI'; padding: 3px 5px;"
+        )
+        self.microphone_indicator.hide()
+        header_layout.addWidget(self.microphone_indicator)
         self.menu_button = QPushButton("...")
         self.menu_button.setObjectName("petMenuButton")
         self.menu_button.setFixedSize(28, 24)
@@ -1576,6 +1599,8 @@ class FibiWindow(QWidget):
         self.bridge.voice_preparing.connect(self._on_voice_preparing)
         self.bridge.speaking_started.connect(self._on_speaking_started)
         self.bridge.speaking_finished.connect(self._on_speaking_finished)
+        self.bridge.wake_detected.connect(self._on_wake_detected)
+        self.bridge.microphone_state.connect(self._set_microphone_state)
 
     def _setup_tray(self) -> None:
         if not QSystemTrayIcon.isSystemTrayAvailable():
@@ -1741,6 +1766,7 @@ class FibiWindow(QWidget):
         if self._voice_listening or self.life.is_speaking:
             return
         self._voice_listening = True
+        self._set_microphone_state("command")
         self.mic_button.setEnabled(False)
         self.life.set_thinking(False)
         self.sprite.set_expression("thinking", temporary_ms=6000)
@@ -1804,6 +1830,7 @@ class FibiWindow(QWidget):
         from fibi.brain.cleanup import clean_response
 
         self._voice_listening = False
+        self._sync_wake_listener()
         if hasattr(self, "mic_button"):
             self.mic_button.setEnabled(True)
         self._refresh_provider_badge(result)
@@ -1825,6 +1852,63 @@ class FibiWindow(QWidget):
             QTimer.singleShot(timing.pre_delay_ms, display)
         else:
             display()
+
+    def _sync_wake_listener(self) -> None:
+        enabled = bool(
+            self.core.voice_settings.settings.allow_voice_input
+            and self.core.voice_settings.settings.wake_word_enabled
+        )
+        if not enabled:
+            self._wake_stop.set()
+            self._set_microphone_state("")
+            return
+        self._set_microphone_state("wake")
+        if self._wake_thread is not None and self._wake_thread.is_alive():
+            return
+        self._wake_stop.clear()
+        self._wake_thread = threading.Thread(target=self._wake_listener_worker, daemon=True)
+        self._wake_thread.start()
+
+    def _wake_listener_worker(self) -> None:
+        while not self._wake_stop.is_set():
+            if self.life.is_busy() or self._voice_listening:
+                self._wake_stop.wait(0.4)
+                continue
+            try:
+                detected, result = self.core.listen_for_wake_once()
+                if self._wake_stop.is_set():
+                    return
+                if detected:
+                    self.bridge.wake_detected.emit()
+                    self.bridge.microphone_state.emit("command")
+                    self.bridge.response_ready.emit(self.core.capture_wake_command())
+                    self._wake_stop.wait(0.6)
+                elif result.error:
+                    self._wake_stop.wait(1.2)
+            except Exception as error:
+                print(f"ERROR: wake word listener failed: {error}")
+                self._wake_stop.wait(1.5)
+
+    def _on_wake_detected(self) -> None:
+        self.life.set_listening(True)
+        self.sprite.set_expression("thinking", temporary_ms=9000)
+        self.bubble.show_text("listening...", BubbleDisplayOptions("instant", 0, True, True))
+        self._play_sound("click")
+
+    def _set_microphone_state(self, state: str) -> None:
+        if not hasattr(self, "microphone_indicator"):
+            return
+        if state == "command":
+            self.microphone_indicator.setText("MIC: LISTEN")
+            self.microphone_indicator.show()
+            return
+        if state == "wake":
+            self.microphone_indicator.setText("MIC: WAKE")
+            self.microphone_indicator.show()
+            self.life.set_listening(False)
+            return
+        self.microphone_indicator.hide()
+        self.life.set_listening(False)
 
     def _speak_in_background(self, text: str, expression_after: str, model_used: str = "", tts_priority: str = "") -> None:
         from fibi.brain.cleanup import tts_safe_text
@@ -1987,6 +2071,7 @@ class FibiWindow(QWidget):
             self.hide()
             event.ignore()
             return
+        self._wake_stop.set()
         goodbye = self.core.shutdown()
         if goodbye:
             print(f"FIBI GOODBYE: {goodbye.text}")
