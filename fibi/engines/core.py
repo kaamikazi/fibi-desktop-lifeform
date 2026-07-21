@@ -82,6 +82,7 @@ from fibi.engines.relationship_engine import RelationshipEngine
 from fibi.engines.ritual_engine import RitualEngine
 from fibi.engines.repetition_guard import RepetitionGuard
 from fibi.engines.response_budget_engine import BUDGET_FALLBACKS, ResponseBudgetEngine
+from fibi.engines.reply_style_engine import ReplyStyleEngine
 from fibi.engines.route_decision_engine import RouteDecisionEngine
 from fibi.engines.routers import (
     ActionRouter,
@@ -358,6 +359,7 @@ class FibiCore:
         self.memory_router = MemoryRouter(RAGMemoryServiceFacade(database_path=self.memory.database_path))
         self.memory_review = MemoryReviewEngine(self.memory_router.rag_memory, guard=self.sensitive_memory_guard)
         self.response_pipeline = ResponsePipeline()
+        self.reply_style = ReplyStyleEngine()
         self._last_referenced_memory_id: int | None = None
         self._last_referenced_memory_is_legacy = False
         self._cancel_requested = False
@@ -3623,6 +3625,10 @@ class FibiCore:
             patterns=detected_patterns,
             memory_hints=memory_hints,
             bond=self.life.bond,
+            reply_instruction=self.reply_style.instruction(
+                self.app_settings.settings.reply_style,
+                user_message,
+            ),
         )
 
         opinion_result = self.opinions.evaluate(
@@ -3720,6 +3726,10 @@ class FibiCore:
             local_brain_confidence=getattr(self, "_active_local_brain_confidence", "n/a"),
             local_brain_handled=getattr(self, "_active_local_brain_handled", None),
             requires_live_data=gemini_search_allowed,
+            response_instruction=self.reply_style.instruction(
+                self.app_settings.settings.reply_style,
+                user_message,
+            ),
         )
         self.budget.update(model_budget, model_started)
         if model_budget.budget_exceeded and not routed.reply_text.strip():
@@ -3765,6 +3775,10 @@ class FibiCore:
                 local_brain_confidence=getattr(self, "_active_local_brain_confidence", "n/a"),
                 local_brain_handled=getattr(self, "_active_local_brain_handled", None),
                 requires_live_data=gemini_search_allowed,
+                response_instruction=self.reply_style.instruction(
+                    self.app_settings.settings.reply_style,
+                    user_message,
+                ),
             )
             print("RAW AI REPLY: [model response omitted]")
             display, tagged_mood = self._clean_model_reply(retry.reply_text)
@@ -3842,6 +3856,11 @@ class FibiCore:
             display = decision.text
         elif decision.action == "silence":
             display = "okay."
+        display = self.reply_style.apply(
+            display,
+            self.app_settings.settings.reply_style,
+            user_message,
+        )
         provider_error_reply = bool(used_fallback and router_was_used)
         tts = "" if provider_error_reply else tts_safe_text(display)
         print(f"TTS TEXT: {'[model response omitted]' if router_was_used else tts}")

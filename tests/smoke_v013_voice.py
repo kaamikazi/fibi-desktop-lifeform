@@ -132,7 +132,8 @@ def run() -> None:
         assert core.respond("/wake word status").display_text == "wake word sleeping."
 
         listened = core.respond("/listen")
-        assert "app creature" in listened.display_text
+        assert "Result: completed" in listened.display_text
+        assert "Chrome opened" in listened.display_text
         assert launched
         assert core.model.calls == 0
 

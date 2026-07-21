@@ -41,6 +41,8 @@ class AppSettingsEngine:
             defaults["language_provider"] = ""
         if defaults["window_mode"] not in {"compact", "expanded"}:
             defaults["window_mode"] = "compact"
+        if defaults["reply_style"] not in {"concise", "normal", "detailed"}:
+            defaults["reply_style"] = "concise"
         return AppSettings(**defaults)
 
     def save(self) -> None:
@@ -57,6 +59,8 @@ class AppSettingsEngine:
             current["language_provider"] = ""
         if current["window_mode"] not in {"compact", "expanded"}:
             current["window_mode"] = "compact"
+        if current["reply_style"] not in {"concise", "normal", "detailed"}:
+            current["reply_style"] = "concise"
         self.settings = AppSettings(**current)
         self.save()
         return self.settings

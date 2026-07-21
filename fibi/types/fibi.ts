@@ -1374,6 +1374,7 @@ export interface AppSettings {
   languageProvider: "" | "ollama" | "gemini";
   automaticProviderFallback: boolean;
   windowMode: "compact" | "expanded";
+  replyStyle: "concise" | "normal" | "detailed";
 }
 
 export interface TrayAction {

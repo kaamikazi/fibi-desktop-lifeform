@@ -168,7 +168,8 @@ def run() -> None:
         assert model.calls == 0
 
         opened_app = core.respond("open chrome")
-        assert "app creature" in opened_app.display_text
+        assert "Result: completed" in opened_app.display_text
+        assert "Chrome opened" in opened_app.display_text
         assert launched
         assert model.calls == 0
 

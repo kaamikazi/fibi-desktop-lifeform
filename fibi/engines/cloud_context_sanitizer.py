@@ -33,6 +33,7 @@ class CloudContextSanitizer:
         context_level: str = "minimal",
         memory_hints: list[str] | None = None,
         observation: Observation | None = None,
+        response_instruction: str = "",
     ) -> str:
         """Return a cloud-safe prompt with no raw DB rows, logs, dreams, or clipboard."""
         safe_message = self.sanitize_text(user_message, 500)
@@ -45,6 +46,8 @@ class CloudContextSanitizer:
             "Never mention private data, logs, files, clipboard, or screenshots.",
             f"Current mood: {self.sanitize_text(mood, 40)}.",
         ]
+        if response_instruction:
+            lines.append(f"Response length: {self.sanitize_text(response_instruction, 260)}")
         if context_level in {"minimal", "memory_hint"} and observation:
             lines.append(f"Time feel: {self.sanitize_text(observation.time_of_day, 40)}.")
         if context_level == "memory_hint":

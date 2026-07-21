@@ -118,20 +118,18 @@ class DesktopActionEngine:
             return DesktopActionResult(False, "browser creature resisted.", action, target, error=str(exc))
 
     def _open_app(self, target: str) -> DesktopActionResult:
-        search = self.app_index.search(target, limit=1)
-        if not search.matches:
-            return DesktopActionResult(False, "couldn't find that creature.", "open_app", target, error="not indexed")
-        entry = search.matches[0]
-        path = Path(entry.path)
-        if path.suffix.lower() not in {".exe", ".lnk"}:
-            return DesktopActionResult(False, "unknown launch shape.", "open_app", target, error="unsupported extension")
-        if not path.exists():
-            return DesktopActionResult(False, "app path vanished.", "open_app", target, error="missing path")
+        entry = self.app_index.resolve_app(target)
+        if entry is None:
+            name = self.app_index.display_name_for(target)
+            message = f"{name} was not found. Register its path in Settings > Actions."
+            return DesktopActionResult(False, message, "open_app", target, error=message)
         try:
-            self.app_launcher(str(path))
-            return DesktopActionResult(True, "app creature summoned.", "open_app", entry.display_name)
+            self.app_launcher(entry.path)
+            if entry.source in {"path", "known-location", "start-menu", "windows-app-id"}:
+                self.app_index.add_entry(entry.display_name, entry.path, entry.source, entry.confidence)
+            return DesktopActionResult(True, f"{entry.display_name} opened.", "open_app", entry.display_name)
         except Exception as exc:
-            return DesktopActionResult(False, "app creature resisted.", "open_app", target, error=str(exc))
+            return DesktopActionResult(False, f"{entry.display_name} could not be opened.", "open_app", target, error=str(exc))
 
     def _open_folder(self, target: str) -> DesktopActionResult:
         path = Path(target).expanduser().resolve()
@@ -149,14 +147,11 @@ class DesktopActionEngine:
         project = Path(target).expanduser().resolve()
         if not self._path_allowed(project) or not project.is_dir():
             return DesktopActionResult(False, "project is not registered.", "open_project_vscode", target, error="path not allowlisted")
-        search = self.app_index.search("visual studio code", limit=1)
-        if not search.matches:
-            search = self.app_index.search("vscode", limit=1)
-        if not search.matches:
-            search = self.app_index.search("code", limit=1)
-        if not search.matches:
-            return DesktopActionResult(False, "VS Code is not in the app index.", "open_project_vscode", target, error="vscode not indexed")
-        executable = Path(search.matches[0].path)
+        resolved = self.app_index.resolve_app("vscode")
+        if resolved is None or resolved.path.startswith("shell:AppsFolder"):
+            message = "VS Code was not found. Register its path in Settings > Actions."
+            return DesktopActionResult(False, message, "open_project_vscode", target, error=message)
+        executable = Path(resolved.path)
         if executable.suffix.lower() != ".exe" or not executable.exists():
             return DesktopActionResult(False, "VS Code path is unavailable.", "open_project_vscode", target, error="invalid vscode path")
         try:
@@ -257,6 +252,9 @@ class DesktopActionEngine:
 
     @staticmethod
     def _default_launch(path: str) -> None:
+        if path.startswith("shell:AppsFolder\\") and os.name == "nt":
+            subprocess.Popen(["explorer.exe", path], close_fds=True)
+            return
         if hasattr(os, "startfile"):
             os.startfile(path)  # type: ignore[attr-defined]
             return

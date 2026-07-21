@@ -1703,6 +1703,7 @@ class AppSettings:
     language_provider: str = ""
     automatic_provider_fallback: bool = False
     window_mode: str = "compact"
+    reply_style: str = "concise"
 
 
 @dataclass(slots=True)

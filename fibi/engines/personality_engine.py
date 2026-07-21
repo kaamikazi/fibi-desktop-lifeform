@@ -51,6 +51,7 @@ class PersonalityEngine:
         patterns: list[DetectedPattern] | None = None,
         memory_hints: list[str] | None = None,
         bond: BondState | None = None,
+        reply_instruction: str = "",
     ) -> PersonalityContext:
         memory_summary = self.memory.summarize(memories) or "- none relevant"
         hints = memory_hints if memory_hints is not None else self.natural_memory_hints(memories)
@@ -74,6 +75,7 @@ class PersonalityEngine:
             f"Relevant memories:\n{memory_summary}\n"
             f"Natural memory hints you may use:\n{hint_summary}\n"
             f"Local patterns:\n{pattern_summary}"
+            + (f"\nResponse length policy: {reply_instruction}" if reply_instruction else "")
         )
         return PersonalityContext(
             system_prompt,

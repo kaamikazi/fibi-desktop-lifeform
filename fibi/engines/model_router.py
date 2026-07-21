@@ -80,6 +80,7 @@ class ModelRouter:
         local_brain_confidence: str = "n/a",
         local_brain_handled: bool | None = None,
         requires_live_data: bool = False,
+        response_instruction: str = "",
     ) -> ModelRouterResult:
         start = time.perf_counter()
         print("ROUTER START")
@@ -119,6 +120,7 @@ class ModelRouter:
             privacy.cloud_context_level,
             memory_hints=memory_hints,
             observation=observation,
+            response_instruction=response_instruction,
         )
         if self.mode == "gemini":
             if not gemini_allowed:

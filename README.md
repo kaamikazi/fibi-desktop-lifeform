@@ -73,8 +73,14 @@ The goal is not to claim consciousness or autonomy. The goal is a more durable d
 
 ### Safe Manual Computer Control
 
-- Direct commands can open indexed apps, allowlisted user folders, known
-  websites, and registered projects in indexed VS Code.
+- Direct commands can open allowlisted Windows apps, user folders, known
+  websites, and registered projects in VS Code.
+- Common Windows apps resolve from the saved registry, `PATH`, known install
+  locations, then Start Menu shortcuts. Discovered targets are saved only
+  after validation and a successful launch request.
+- Settings > Actions > Applications accepts explicit `.exe` registrations.
+  Scripts, command arguments, missing files, and executable paths typed into
+  chat are rejected.
 - Clipboard writing is explicit; keyboard typing, folder creation, safe
   commands, and screenshots require confirmation and use narrow allowlists.
 - Safe commands are fixed argument arrays executed with `shell=False`.
@@ -82,6 +88,14 @@ The goal is not to claim consciousness or autonomy. The goal is a more durable d
   credential handling, and other destructive operations remain blocked.
 - Every action reply reports the request, permission decision, result, and a
   short reason.
+
+### Reply Length
+
+- Settings > Behavior offers Concise, Normal, and Detailed reply styles.
+- Concise is the default: direct answers use 1-3 short sentences and normally
+  stay below 60 words unless the user explicitly asks for detail.
+- The same response policy is applied to local Ollama and optional Gemini
+  prompts, then enforced before display, memory, and speech output.
 
 ### Conversation and Gemini Hotfix
 

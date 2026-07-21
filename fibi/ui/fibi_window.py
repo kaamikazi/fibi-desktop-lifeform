@@ -26,6 +26,7 @@ from PyQt6.QtGui import (
 from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
+    QFileDialog,
     QCheckBox,
     QComboBox,
     QFrame,
@@ -613,13 +614,25 @@ class FibiSettingsDialog(QDialog):
         setup.clicked.connect(self._open_setup)
         general_layout.insertWidget(general_layout.count() - 1, setup)
 
-        add_tab("Behavior", "Presence and behavior", [
+        behavior_layout = add_tab("Behavior", "Presence and behavior", [
             ("allow_idle_bubbles", "Idle bubbles", privacy.allow_idle_bubbles),
             ("quiet_mode", "Quiet mode", self.core.boundary.quiet.active),
             ("bubble_typing_effect", "Bubble typing effect", settings.bubble_typing_effect),
             ("allow_project_checks", "Project checks", settings.allow_project_checks),
             ("speak_utility_replies", "Speak utility replies", self.core.tts_manager.speak_utility_replies),
         ])
+        reply_group = QGroupBox("Reply length")
+        reply_layout = QHBoxLayout(reply_group)
+        reply_layout.addWidget(QLabel("Default style"))
+        self.reply_style_combo = QComboBox()
+        self.reply_style_combo.setObjectName("replyStyleCombo")
+        self.reply_style_combo.addItem("Concise", "concise")
+        self.reply_style_combo.addItem("Normal", "normal")
+        self.reply_style_combo.addItem("Detailed", "detailed")
+        reply_index = self.reply_style_combo.findData(settings.reply_style)
+        self.reply_style_combo.setCurrentIndex(max(0, reply_index))
+        reply_layout.addWidget(self.reply_style_combo, 1)
+        behavior_layout.insertWidget(behavior_layout.count() - 1, reply_group)
         add_tab("Privacy", "Local privacy controls", [
             ("allow_memory_learning", "Memory learning", privacy.allow_memory_learning),
             ("allow_journal", "Journal", privacy.allow_journal),
@@ -708,9 +721,51 @@ class FibiSettingsDialog(QDialog):
         processing_layout.addWidget(self.rvc_warning_label)
         voice_layout.insertWidget(voice_layout.count() - 1, processing_group)
 
-        add_tab("Actions", "Desktop actions", [
+        actions_layout = add_tab("Actions", "Desktop actions", [
             ("allow_desktop_actions", "Safe actions", self.core.action_settings.settings.allow_desktop_actions),
         ])
+        applications_group = QGroupBox("Applications")
+        applications_layout = QVBoxLayout(applications_group)
+        self.application_list = QListWidget()
+        self.application_list.setObjectName("registeredApplicationsList")
+        self.application_list.currentRowChanged.connect(self._load_selected_application)
+        applications_layout.addWidget(self.application_list)
+        self.application_name_input = QLineEdit()
+        self.application_name_input.setObjectName("applicationNameInput")
+        self.application_name_input.setPlaceholderText("Application name")
+        applications_layout.addWidget(self.application_name_input)
+        path_row = QHBoxLayout()
+        self.application_path_input = QLineEdit()
+        self.application_path_input.setObjectName("applicationPathInput")
+        self.application_path_input.setPlaceholderText(r"C:\Path\Application.exe")
+        browse_application = QPushButton("Browse")
+        browse_application.setObjectName("browseApplicationButton")
+        browse_application.clicked.connect(self._browse_application)
+        path_row.addWidget(self.application_path_input, 1)
+        path_row.addWidget(browse_application)
+        applications_layout.addLayout(path_row)
+        application_buttons = QHBoxLayout()
+        test_application = QPushButton("Test")
+        test_application.setObjectName("testApplicationButton")
+        test_application.setToolTip("Validate the executable without launching it")
+        test_application.clicked.connect(self._test_application_path)
+        save_application = QPushButton("Save")
+        save_application.setObjectName("saveApplicationButton")
+        save_application.clicked.connect(self._save_application)
+        remove_application = QPushButton("Remove")
+        remove_application.setObjectName("removeApplicationButton")
+        remove_application.clicked.connect(self._remove_application)
+        application_buttons.addWidget(test_application)
+        application_buttons.addWidget(save_application)
+        application_buttons.addWidget(remove_application)
+        application_buttons.addStretch(1)
+        applications_layout.addLayout(application_buttons)
+        self.application_status = QLabel("Only existing .exe files are accepted. No arguments or scripts.")
+        self.application_status.setObjectName("applicationStatus")
+        self.application_status.setWordWrap(True)
+        applications_layout.addWidget(self.application_status)
+        actions_layout.insertWidget(actions_layout.count() - 1, applications_group)
+        self._refresh_registered_applications()
         add_tab("Performance", "Diagnostics", [
             ("performance_debug_logs", "Performance debug logs", settings.performance_debug_logs),
         ])
@@ -827,6 +882,7 @@ class FibiSettingsDialog(QDialog):
             performance_debug_logs=self.checks["performance_debug_logs"].isChecked(),
             allow_project_checks=self.checks["allow_project_checks"].isChecked(),
             automatic_provider_fallback=self.provider_fallback_checkbox.isChecked(),
+            reply_style=str(self.reply_style_combo.currentData()),
         )
         self.core.tts_manager.speak_utility_replies = self.checks["speak_utility_replies"].isChecked()
         self.core.update_voice_settings(allow_voice_input=self.checks["allow_voice_input"].isChecked())
@@ -859,6 +915,56 @@ class FibiSettingsDialog(QDialog):
         else:
             self.core.boundary.disable_quiet()
         self.accept()
+
+    def _refresh_registered_applications(self) -> None:
+        self.application_list.clear()
+        for entry in self.core.app_index.manual_entries():
+            self.application_list.addItem(f"{entry.display_name}  |  {entry.path}")
+
+    def _load_selected_application(self, row: int) -> None:
+        entries = self.core.app_index.manual_entries()
+        if 0 <= row < len(entries):
+            self.application_name_input.setText(entries[row].display_name)
+            self.application_path_input.setText(entries[row].path)
+
+    def _browse_application(self) -> None:
+        selected, _filter = QFileDialog.getOpenFileName(
+            self,
+            "Choose application",
+            str(Path.home()),
+            "Windows applications (*.exe)",
+        )
+        if selected:
+            self.application_path_input.setText(selected)
+            if not self.application_name_input.text().strip():
+                self.application_name_input.setText(Path(selected).stem)
+
+    def _test_application_path(self) -> None:
+        valid, message = self.core.app_index.validate_manual_executable(
+            self.application_path_input.text().strip()
+        )
+        self.application_status.setText("Executable is valid." if valid else message)
+
+    def _save_application(self) -> None:
+        saved, message = self.core.app_index.register_manual(
+            self.application_name_input.text(),
+            self.application_path_input.text(),
+        )
+        self.application_status.setText(message)
+        if saved:
+            self._refresh_registered_applications()
+
+    def _remove_application(self) -> None:
+        name = self.application_name_input.text().strip()
+        if not name:
+            self.application_status.setText("Select a registered application first.")
+            return
+        removed = self.core.app_index.remove_entry(name)
+        self.application_status.setText(f"{name} removed." if removed else "Registered application was not found.")
+        if removed:
+            self.application_name_input.clear()
+            self.application_path_input.clear()
+            self._refresh_registered_applications()
 
     def _test_provider(self) -> None:
         parent = self.parent()
