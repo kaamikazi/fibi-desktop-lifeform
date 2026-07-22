@@ -290,7 +290,12 @@ at the presentation layer, not inside services.
 
 ## Immediate Engineering Task
 
-Extract runtime construction from `FibiCore.__init__` into a tested composition
-root and define `LanguageProvider`, `MemoryService`, and `DesktopActionService`
-protocols. Preserve current imports and behavior with adapters. This yields the
-largest maintainability gain without a risky rewrite.
+Completed in the first 0.4 migration step: normal application startup now uses
+the tested `fibi.app` composition root and one lifecycle-owned service graph.
+Minimal protocols cover language providers, memory, desktop actions, projects,
+STT, and TTS. `FibiCore` still supports its legacy constructor and still owns
+several second-order routers and product policies; those are deliberate
+remaining coupling points for incremental migration.
+
+The next migration task is to extract provider selection and generation routing
+behind a dedicated companion use case while preserving manual provider choice.

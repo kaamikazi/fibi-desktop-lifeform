@@ -61,10 +61,32 @@ not authority.
 
 ## Lifecycle
 
-One application runtime owns one instance of each shared service. The Pet and
-Control Center subscribe to it. Every worker is registered, cancellable, and
-joined during shutdown. Optional services are lazy and report unavailable
-rather than failing application startup.
+`fibi.app.composition` is the application composition root. It resolves runtime
+paths and the optional environment file once, constructs an explicit
+`ApplicationServices` graph, and injects that graph into `FibiCore`.
+`ApplicationRuntime` owns the graph and provides idempotent `start()` and
+`shutdown()` operations. The Pet receives its core from this runtime, and the
+Control Center opened by the Pet reuses the same core. GUI smoke verifies the
+provider registry, memory, TTS, action, project, and STT identities.
+
+Feature workers remain opt-in. Wake-word work must not start unless the saved
+setting enables it. Core shutdown currently closes legacy resources; the
+runtime guards that call so it occurs once and also performs best-effort cleanup
+after partial construction.
+
+## Composition Guidance
+
+Contributors adding a top-level service should define only the small structural
+protocol its consumers need, construct the concrete adapter in
+`fibi/app/composition.py`, add it as a typed `ApplicationServices` field, and
+cover identity and cleanup behavior. Do not introduce a global service locator:
+hidden dependencies and process-wide state make tests and lifecycle behavior
+unpredictable. A DI framework was also rejected because this graph is explicit,
+small enough to wire in Python, and should remain approachable to contributors.
+
+Direct `FibiCore(...)` construction remains supported as a compatibility path.
+It will be narrowed gradually as each capability moves behind a tested service
+boundary; the core is not being split in one high-risk rewrite.
 
 ## Data And Privacy
 

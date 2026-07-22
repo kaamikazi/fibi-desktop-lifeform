@@ -65,9 +65,10 @@ Select Ollama or Gemini manually from Settings or with:
 /provider use gemini
 ```
 
-For Gemini, set `GEMINI_API_KEY` in your user environment or an ignored
-project-root `.env`. Never commit `.env` or credentials. Provider failures do
-not silently change the selected provider.
+For Gemini, copy [`.env.example`](.env.example) to an ignored project-root
+`.env` and replace its placeholder, or set `GEMINI_API_KEY` in your user
+environment. Never commit `.env` or credentials. Provider failures do not
+silently change the selected provider.
 
 ## Daily Use
 

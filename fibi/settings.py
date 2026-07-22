@@ -9,12 +9,12 @@ import json
 import os
 from pathlib import Path
 
-from fibi.environment import load_environment
+from fibi.environment import resolve_environment
 
 PROJECT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = PROJECT_DIR.parent
 CONFIG_PATH = PROJECT_DIR / "config.json"
-ENVIRONMENT_STATUS = load_environment(PROJECT_ROOT)
+ENVIRONMENT_STATUS = resolve_environment(PROJECT_ROOT)
 
 OLLAMA_URL = "http://localhost:11434"
 OLLAMA_MODEL = "qwen2.5:1.5b"

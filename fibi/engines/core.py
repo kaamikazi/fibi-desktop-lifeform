@@ -11,6 +11,10 @@ import uuid
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from fibi.app.composition import ApplicationServices
 
 from fibi.brain.cleanup import clean_response, extract_expression_markers, is_effectively_empty, remove_mood_tags, tts_safe_text
 from fibi.build_info import APP_VERSION
@@ -234,7 +238,68 @@ class FibiCore:
         file_reader: FileReaderEngine | None = None,
         project_workspace: ProjectWorkspaceEngine | None = None,
         project_edit_planner: ProjectEditPlanner | None = None,
+        tts_manager: TtsManager | None = None,
+        services: ApplicationServices | None = None,
     ) -> None:
+        # Normal application startup supplies one graph from fibi.app. These
+        # assignments preserve explicit test overrides and the legacy direct
+        # constructor while avoiding duplicate concrete services in the app.
+        if services is not None:
+            life = life or services.life
+            memory = memory or services.memory
+            privacy = privacy or services.privacy
+            observation = observation or services.observation
+            journal = journal or services.journal
+            patterns = patterns or services.patterns
+            attention = attention or services.attention
+            habits = habits or services.habits
+            personality = personality or services.personality
+            model = model or services.model
+            nvidia_model = nvidia_model or services.nvidia_model
+            model_router = model_router or services.model_router
+            reactions = reactions or services.reactions
+            rituals = rituals or services.rituals
+            motion = motion or services.motion
+            timing = timing or services.timing
+            repetition = repetition or services.repetition
+            inner_life = inner_life or services.inner_life
+            preferences = preferences or services.preferences
+            opinions = opinions or services.opinions
+            memory_care = memory_care or services.memory_care
+            relationship = relationship or services.relationship
+            boundary = boundary or services.boundary
+            social = social or services.social
+            classifier = classifier or services.classifier
+            micro_brain = micro_brain or services.micro_brain
+            budget = budget or services.budget
+            route_decisions = route_decisions or services.route_decisions
+            health = health or services.health
+            warmup = warmup or services.warmup
+            app_settings = app_settings or services.app_settings
+            autostart = autostart or services.autostart
+            data_health = data_health or services.data_health
+            asset_health = asset_health or services.asset_health
+            action_settings = action_settings or services.action_settings
+            action_intents = action_intents or services.action_intents
+            permissions = permissions or services.permissions
+            app_index = app_index or services.app_index
+            desktop_actions = desktop_actions or services.desktop_actions
+            action_confirmations = action_confirmations or services.action_confirmations
+            action_journal = action_journal or services.action_journal
+            voice_settings = voice_settings or services.voice_settings
+            speech_recognition = speech_recognition or services.speech_recognition
+            voice_router = voice_router or services.voice_router
+            voice_health = voice_health or services.voice_health
+            voice_skin_settings = voice_skin_settings or services.voice_skin_settings
+            rvc_voice_skin = rvc_voice_skin or services.rvc_voice_skin
+            voice_cache = voice_cache or services.voice_cache
+            secret_sanitizer = secret_sanitizer or services.secret_sanitizer
+            context_engine = context_engine or services.context_engine
+            file_reader = file_reader or services.file_reader
+            project_workspace = project_workspace or services.project_workspace
+            project_edit_planner = project_edit_planner or services.project_edit_planner
+            tts_manager = tts_manager or services.tts_manager
+        self.services = services
         self._started_monotonic = time.monotonic()
         self._last_error_summary = ""
         self.life = life or LifeEngine()
@@ -267,7 +332,7 @@ class FibiCore:
         self.budget = budget or ResponseBudgetEngine()
         self.route_decisions = route_decisions or RouteDecisionEngine()
         self.health = health or ModelHealthEngine(self.life.state_path)
-        self.tts_manager = TtsManager()
+        self.tts_manager = tts_manager or TtsManager()
         self.warmup = warmup or WarmupEngine()
         self.app_settings = app_settings or AppSettingsEngine()
         selected_provider = self.app_settings.settings.language_provider or "ollama"

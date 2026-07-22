@@ -17,9 +17,9 @@ python -m pip install -r requirements.txt
 python app.py
 ```
 
-Copy the documented environment template to `.env` only when configuring an
-optional cloud provider. Never commit `.env`, keys, tokens, runtime data, logs,
-voice models, or user memory.
+Copy the canonical [`.env.example`](../.env.example) to `.env` only when
+configuring an optional cloud provider. Never commit `.env`, keys, tokens,
+runtime data, logs, voice models, or user memory.
 
 ## Test Commands
 
@@ -59,6 +59,12 @@ application launch.
 Significant boundaries, persistence formats, permissions, provider behavior,
 plugin APIs, and supported-platform decisions require an ADR in
 `docs/decisions/`. Prefer compatibility adapters and staged migrations.
+
+Top-level dependencies are wired only in `fibi/app/composition.py`. Add a
+minimal protocol in `fibi/app/contracts.py` when a consumer needs a replaceable
+boundary, then add the concrete service to `ApplicationServices` and test its
+identity and cleanup. Do not fetch services from globals or construct a second
+provider, memory, action, project, STT, or TTS service in a UI adapter.
 
 ## Packaging
 

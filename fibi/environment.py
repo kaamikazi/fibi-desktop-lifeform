@@ -38,6 +38,9 @@ class EnvironmentStatus:
     dotenv_available: bool
 
 
+_RESOLVED_ENVIRONMENTS: dict[tuple[Path, bool, Path | None], EnvironmentStatus] = {}
+
+
 def _is_configured_key(value: str | None) -> bool:
     return (value or "").strip().upper() not in PLACEHOLDER_KEYS
 
@@ -108,3 +111,31 @@ def load_environment(
         gemini_key_configured=_is_configured_key(os.getenv("GEMINI_API_KEY")),
         dotenv_available=load_dotenv is not None,
     )
+
+
+def resolve_environment(
+    project_root: Path,
+    *,
+    packaged: bool | None = None,
+    explicit_path: Path | None = None,
+) -> EnvironmentStatus:
+    """Resolve one environment source once for an application process.
+
+    ``load_environment`` remains independently callable for diagnostics and
+    tests. Application startup and settings imports use this cached boundary so
+    provider modules cannot load the same file a second time.
+    """
+
+    frozen = bool(getattr(sys, "frozen", False)) if packaged is None else packaged
+    normalized_root = Path(project_root).resolve()
+    normalized_explicit = Path(explicit_path).expanduser().resolve() if explicit_path else None
+    key = (normalized_root, frozen, normalized_explicit)
+    status = _RESOLVED_ENVIRONMENTS.get(key)
+    if status is None:
+        status = load_environment(
+            normalized_root,
+            packaged=frozen,
+            explicit_path=normalized_explicit,
+        )
+        _RESOLVED_ENVIRONMENTS[key] = status
+    return status
