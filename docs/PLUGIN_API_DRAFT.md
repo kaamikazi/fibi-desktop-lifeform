@@ -102,6 +102,13 @@ separate process and OS sandbox in a later API version.
 - Internal module imports are unsupported and may change without notice.
 - A plugin conformance suite will validate manifests and contribution behavior.
 
+Provider adapters are not a plugin contribution in API v1. The experimental
+internal provider contract is documented for core contributors, but plugins
+cannot register a provider, access provider credentials, change manual
+selection, or bypass cloud-context approval. A future provider contribution
+would require a separate capability, manifest permissions, health isolation,
+and a stable public contract.
+
 ## Error And Performance Rules
 
 - Callbacks return structured success/error results.

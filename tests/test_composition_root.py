@@ -40,6 +40,8 @@ def test_pet_and_control_center_receive_the_same_core(qapp, tmp_path: Path, monk
         assert pet.core is runtime.core
         assert control_center.core is runtime.core
         assert control_center.life is runtime.core.life
+        assert control_center.core.provider_selection is pet.core.provider_selection
+        assert control_center.core.generation_service is pet.core.generation_service
     finally:
         pet._quitting = True
         pet.close()

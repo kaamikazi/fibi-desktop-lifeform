@@ -45,6 +45,37 @@ application launch.
 - Do not add permanent memory writes without consent and review behavior.
 - Keep optional features import-safe when their dependency is absent.
 
+## Adding A Language Provider
+
+The provider API is experimental and currently versioned as
+`0.4-experimental`. Implement the typed `LanguageProvider` protocol in
+`fibi/services/providers/protocols.py`, give it a stable lowercase ID, normalize
+all failures to `ProviderErrorCategory`, and register the adapter explicitly in
+`fibi/services/providers/factory.py`. Do not add SDK types to Core or the UI.
+
+Adapters receive a `GenerationRequest` containing prepared prompt text and
+approved context only. They must never load or log secrets through diagnostics,
+change provider selection, invoke desktop actions, or define Fibi's identity.
+Use deterministic test doubles for provider tests; real Gemini and Ollama calls
+are forbidden in the automated suite.
+
+Manual selection and explicit fallback are separate settings. A failed request
+must not mutate selection. New fallback categories require an ADR and tests for
+privacy, visibility, and deterministic routing.
+
+The normalized error categories are `not_configured`, `authentication_error`,
+`quota_error`, `rate_limited`, `timeout`, `network_error`,
+`temporary_unavailable`, `model_unavailable`, `invalid_request`,
+`safety_block`, `empty_response`, `cancelled`, and
+`provider_internal_error`. Adapter-specific error text must not escape this
+boundary.
+
+A minimal provider test double implements the five `LanguageProvider` members
+and returns an immutable `GenerationResult`; inject it into a local
+`ProviderRegistry`. Record calls on the double and assert provider IDs and
+normalized result fields. Never monkeypatch a live SDK client or depend on a
+developer's API key or running Ollama service.
+
 ## Change Workflow
 
 1. Inspect existing behavior and dirty files.

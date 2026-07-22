@@ -85,7 +85,7 @@ from fibi.engines.release_health_engine import ReleaseHealthEngine
 from fibi.engines.relationship_engine import RelationshipEngine
 from fibi.engines.ritual_engine import RitualEngine
 from fibi.engines.repetition_guard import RepetitionGuard
-from fibi.engines.response_budget_engine import BUDGET_FALLBACKS, ResponseBudgetEngine
+from fibi.engines.response_budget_engine import ResponseBudgetEngine
 from fibi.engines.reply_style_engine import ReplyStyleEngine
 from fibi.engines.structured_memory_engine import StructuredMemoryEngine
 from fibi.engines.route_decision_engine import RouteDecisionEngine
@@ -141,6 +141,12 @@ CUTE_ONLY_MODEL_REPLIES = {
 from fibi.rag.rag_memory_service import RAGMemoryServiceFacade
 from fibi.runtime_paths import logs_dir, is_packaged, runtime_info
 from fibi.logging_config import mask_secrets
+from fibi.services.providers.diagnostics import ProviderDiagnostics
+from fibi.services.providers.factory import build_provider_subsystem
+from fibi.services.providers.generation import CompanionGenerationService
+from fibi.services.providers.models import GenerationRequest, ResponseLength
+from fibi.services.providers.registry import ProviderRegistry
+from fibi.services.providers.selection import ProviderSelectionService
 
 LOGGER = logging.getLogger(__name__)
 
@@ -238,6 +244,10 @@ class FibiCore:
         file_reader: FileReaderEngine | None = None,
         project_workspace: ProjectWorkspaceEngine | None = None,
         project_edit_planner: ProjectEditPlanner | None = None,
+        provider_registry: ProviderRegistry | None = None,
+        provider_selection: ProviderSelectionService | None = None,
+        generation_service: CompanionGenerationService | None = None,
+        provider_diagnostics: ProviderDiagnostics | None = None,
         tts_manager: TtsManager | None = None,
         services: ApplicationServices | None = None,
     ) -> None:
@@ -257,6 +267,10 @@ class FibiCore:
             model = model or services.model
             nvidia_model = nvidia_model or services.nvidia_model
             model_router = model_router or services.model_router
+            provider_registry = provider_registry or services.provider_registry
+            provider_selection = provider_selection or services.provider_selection
+            generation_service = generation_service or services.generation_service
+            provider_diagnostics = provider_diagnostics or services.provider_diagnostics
             reactions = reactions or services.reactions
             rituals = rituals or services.rituals
             motion = motion or services.motion
@@ -340,6 +354,18 @@ class FibiCore:
         self.model_router.set_automatic_fallback(
             self.app_settings.settings.automatic_provider_fallback
         )
+        if all((provider_registry, provider_selection, generation_service, provider_diagnostics)):
+            self.provider_registry = provider_registry
+            self.provider_selection = provider_selection
+            self.generation_service = generation_service
+            self.provider_diagnostics = provider_diagnostics
+        else:
+            provider_subsystem = build_provider_subsystem(self.model_router, self.app_settings)
+            self.provider_registry = provider_subsystem.registry
+            self.provider_selection = provider_subsystem.selection
+            self.generation_service = provider_subsystem.generation
+            self.provider_diagnostics = provider_subsystem.diagnostics
+        self._provider_router_identity = self.model_router
         self.autostart = autostart or AutostartEngine()
         self.data_health = data_health or DataHealthEngine(
             self.memory.database_path,
@@ -1194,7 +1220,8 @@ class FibiCore:
         LOGGER.exception("gui_event_error", extra={"where": where})
 
     def get_model_status(self) -> str:
-        selected = self.model_router.selected_provider()
+        self._ensure_provider_subsystem()
+        selected = self.provider_selection.get_selected_provider_id()
         cloud = "cloud on" if (
             self.privacy.settings.allow_cloud_model
             and (self.privacy.settings.allow_nvidia_api or self.privacy.settings.allow_gemini_api)
@@ -1204,29 +1231,41 @@ class FibiCore:
     def get_provider_status(self) -> str:
         from fibi.settings import ENVIRONMENT_STATUS
 
-        selected = self.model_router.selected_provider()
-        status = self.model_router.gemini.status(selected=selected == "gemini")
-        active = self.model_router.last_provider_used or "none"
-        configured = "yes" if status.configured else "no"
+        self._ensure_provider_subsystem()
+        selected = self.provider_selection.get_selected_provider_id()
+        provider = self.provider_selection.get_selected_provider()
+        configuration = provider.configuration_status()
+        gemini_configuration = self.provider_registry.get("gemini").configuration_status()
+        health = provider.health()
+        diagnostics = self.provider_diagnostics.snapshot()
+        active = diagnostics.last_active_provider_id or "none"
+        configured = "yes" if gemini_configuration.configured else "no"
         environment_loaded = "yes" if ENVIRONMENT_STATUS.loaded else "no"
-        fallback_enabled = self.model_router.automatic_fallback_enabled
+        fallback_enabled = self.generation_service.fallback_enabled
         fallback = f"Automatic fallback: {'On' if fallback_enabled else 'Off'}"
         preview = "context preview on" if self.privacy.settings.cloud_context_preview else "context preview off"
-        grounding = "Google Search grounding on" if status.google_search_enabled else "Google Search grounding off"
-        last_fallback = self.model_router.last_fallback_provider or "none"
-        last_error = self.model_router.last_error_category or status.last_error_category or "none"
+        gemini_status = self.model_router.gemini.status(selected=selected == "gemini")
+        grounding = "Google Search grounding on" if gemini_status.google_search_enabled else "Google Search grounding off"
+        last_fallback = diagnostics.fallback_provider_id if diagnostics.fallback_used else "none"
+        last_error = diagnostics.last_error_category or (
+            health.last_error_category.value if health.last_error_category else "none"
+        )
         retry = (
-            f"Retry available in approximately {status.retry_after_seconds}s"
-            if status.retry_after_seconds
+            f"Retry available in approximately {health.retry_after_seconds}s"
+            if health.retry_after_seconds
             else "Retry available now"
         )
         return (
-            f"Selected: {selected}. Active: {active}. State: {status.health_state}. Model: {status.model}. "
+            f"Provider: {provider.display_name}. Selected: {selected}. Active: {active}. "
+            f"Attempted: {diagnostics.last_attempted_provider_id or 'none'}. "
+            f"Configured: {'yes' if configuration.configured else 'no'}. "
+            f"State: {health.state}. Model: {diagnostics.last_model_id or configuration.model_id}. "
             f"Environment loaded: {environment_loaded}. Gemini key configured: {configured}. "
-            f"{fallback}. Ollama fallback: {self.model_router.last_fallback_status}. "
+            f"{fallback}. Ollama fallback: {'used' if diagnostics.fallback_used else 'none'}. "
             f"Last fallback provider: {last_fallback}. {preview}. {grounding}. "
-            f"Thinking: {status.thinking_level}. Streaming: {'on' if status.streaming_enabled else 'off'}. "
-            f"Last retry count: {status.last_retry_count}. {retry}. "
+            f"Thinking: {gemini_status.thinking_level}. Streaming: {'on' if gemini_status.streaming_enabled else 'off'}. "
+            f"Last retry count: {diagnostics.retry_count}. Last latency: {diagnostics.last_latency_ms:.0f}ms. "
+            f"Search grounding used: {'yes' if diagnostics.search_grounding_used else 'no'}. {retry}. "
             f"Last provider error category: {last_error}."
         )
 
@@ -1238,8 +1277,29 @@ class FibiCore:
 
     def update_settings(self, **values):
         settings = self.app_settings.update(**values)
+        self._ensure_provider_subsystem()
         self.model_router.set_automatic_fallback(settings.automatic_provider_fallback)
+        self.generation_service.set_fallback(settings.automatic_provider_fallback, "ollama")
+        if "language_provider" in values and settings.language_provider in {"gemini", "ollama"}:
+            self.provider_selection.select_provider(settings.language_provider, persist=False)
         return settings
+
+    def _ensure_provider_subsystem(self) -> None:
+        """Rebind only when a legacy test or caller replaces ``model_router``."""
+
+        if self._provider_router_identity is self.model_router:
+            return
+        subsystem = build_provider_subsystem(
+            self.model_router,
+            self.app_settings,
+            initial_provider_id=self.model_router.selected_provider(),
+            initial_fallback_enabled=self.model_router.automatic_fallback_enabled,
+        )
+        self.provider_registry = subsystem.registry
+        self.provider_selection = subsystem.selection
+        self.generation_service = subsystem.generation
+        self.provider_diagnostics = subsystem.diagnostics
+        self._provider_router_identity = self.model_router
 
     def nap(self) -> CreatureReaction:
         text, expression = self.life.start_nap()
@@ -1498,20 +1558,26 @@ class FibiCore:
     def _handle_provider_command(self, text: str, lowered: str) -> LocalCommandResult:
         if not lowered.startswith("/provider"):
             return LocalCommandResult(False)
+        self._ensure_provider_subsystem()
         if lowered in {"/provider", "/provider status"}:
             return self._local_response(self.get_provider_status(), "thinking", tts_priority="silent")
         if lowered == "/provider list":
+            options = self.provider_selection.list_provider_options()
+            listing = "; ".join(
+                f"{item.provider_id} ({'configured' if item.configured else 'not configured'})"
+                for item in options
+            )
             return self._local_response(
-                "providers: LOCAL - Ollama (default); CLOUD - Gemini (optional, explicit opt-in).",
+                "providers: " + listing + ". selection is manual.",
                 "thinking",
                 tts_priority="silent",
             )
         if lowered == "/provider use ollama":
-            self.model_router.set_mode("ollama")
-            self.app_settings.update(language_provider="ollama")
+            self.provider_selection.select_provider("ollama")
             self.privacy.update(allow_ollama=True, allow_cloud_model=False, allow_gemini_api=False)
             return self._local_response("back to LOCAL - Ollama. cloud off.", "happy", tts_priority="silent")
         if lowered == "/provider use gemini":
+            self.provider_selection.select_provider("gemini")
             if not self.model_router.gemini.is_configured():
                 self.privacy.update(allow_gemini_api=False)
                 missing_key_help = (
@@ -1522,19 +1588,17 @@ class FibiCore:
                     "Add GEMINI_API_KEY there, restart Fibi, and never paste it into chat."
                 )
                 return self._local_response(
-                    missing_key_help,
+                    "Gemini selected, but " + missing_key_help,
                     "sleepy",
                     tts_priority="silent",
                 )
             if not self.model_router.gemini.sdk_available():
                 self.privacy.update(allow_gemini_api=False)
                 return self._local_response(
-                    "Gemini SDK is unavailable. install project requirements locally first.",
+                    "Gemini selected, but the SDK is unavailable. install project requirements locally first.",
                     "sleepy",
                     tts_priority="silent",
                 )
-            self.model_router.set_mode("gemini")
-            self.app_settings.update(language_provider="gemini")
             self.privacy.update(
                 allow_cloud_model=True,
                 allow_gemini_api=True,
@@ -1570,27 +1634,35 @@ class FibiCore:
             self.privacy.update(cloud_context_preview=False)
             return self._local_response("cloud context preview off.", "sleepy", tts_priority="silent")
         if lowered == "/provider test":
-            if self.model_router.mode != "gemini" or not self.privacy.settings.allow_gemini_api:
-                return self._local_response("select Gemini first with /provider use gemini.", "sleepy", tts_priority="silent")
-            result = self.model_router.gemini.test_connection()
-            self.model_router.last_attempted_provider = "gemini"
-            self.model_router.last_duration_ms = result.duration_ms
-            self.model_router.last_generation_latency_ms = result.duration_ms
-            self.model_router.last_fallback_latency_ms = 0.0
-            self.model_router.last_fallback_provider = ""
-            self.model_router.last_fallback_status = "none"
-            self.model_router.last_retry_count = result.retry_count
-            self.model_router.last_error_category = result.error_category
-            if result.error:
-                self.model_router.last_provider_used = ""
+            selected = self.provider_selection.get_selected_provider_id()
+            allowed = (
+                self.privacy.settings.allow_ollama
+                if selected == "ollama"
+                else self.privacy.settings.allow_cloud_model and self.privacy.settings.allow_gemini_api
+            )
+            if not allowed:
                 return self._local_response(
-                    f"Gemini test failed: {result.error_category or 'unknown_provider_error'}.",
+                    f"{selected.title()} is selected but disabled by privacy settings.",
                     "sleepy",
                     tts_priority="silent",
                 )
-            self.model_router.last_provider_used = "gemini"
+            result = self.generation_service.generate(
+                GenerationRequest(
+                    user_text="provider test",
+                    prepared_prompt="",
+                    allowed_provider_ids=frozenset({selected}),
+                    purpose="provider_test",
+                ),
+                allow_fallback=False,
+            )
+            if not result.success:
+                return self._local_response(
+                    f"{selected.title()} test failed: {self.generation_service.present_error(result)}",
+                    "sleepy",
+                    tts_priority="silent",
+                )
             return self._local_response(
-                f"Gemini test ok. model {result.model}. {result.duration_ms:.0f}ms.",
+                f"{selected.title()} test ok. model {result.model_id}. {result.latency_ms:.0f}ms.",
                 "happy",
                 tts_priority="silent",
             )
@@ -3601,11 +3673,12 @@ class FibiCore:
             self.health.record_reply((time.perf_counter() - route_started) * 1000, "local-action", fast_path=True, slowest_step="action_intent")
             return action_response
 
+        self._ensure_provider_subsystem()
         classified = self.chat_router.classify(user_message)
         requires_live_data = classified.category == "live_data"
         gemini_search_allowed = bool(
             requires_live_data
-            and self.model_router.selected_provider() == "gemini"
+            and self.provider_selection.get_selected_provider_id() == "gemini"
             and self.privacy.settings.allow_cloud_model
             and self.privacy.settings.allow_gemini_api
             and self.model_router.gemini.config.google_search
@@ -3876,13 +3949,17 @@ class FibiCore:
         if classified.category == "complex_chat":
             print(f"FAST_ESCALATION_REASON: {self.classifier.escalation_reason(user_message, classified)}")
         model_budget, model_started = self.budget.start("complex_chat")
+        self._ensure_provider_subsystem()
+        selected_provider_id = self.provider_selection.get_selected_provider_id()
         decision = self.route_decisions.decide(
             user_message,
             fast_category=classified,
+            # Preserve the established local Ollama cooldown. Gemini owns its
+            # own bounded retry/health state inside its adapter.
             provider_allowed=(
                 True
-                if self.model_router.selected_provider() == "gemini"
-                else self.health.provider_allowed(self.model_router.selected_provider())
+                if selected_provider_id == "gemini"
+                else self.health.provider_allowed(selected_provider_id)
             ),
         )
         self._log_route_decision(decision)
@@ -3890,108 +3967,107 @@ class FibiCore:
             self._cancel_requested = False
             return self._micro_response("model_unavailable", user_message, observation.time_of_day)
         if not decision.model_router_allowed:
-            display = "Ollama is unavailable. local tiny brain can't explain that well."
+            selected = self.provider_selection.get_selected_provider_id().title()
+            display = f"{selected} is selected but disabled by current privacy settings."
             return self._finish(user_message, display, "sleepy", "health-local-fallback", True, observation, related_project)
         if self.budget.exceeded(model_started, "complex_chat"):
-            display = "model brain is asleep."
+            display = "The provider response budget was exceeded. Please try again."
             return self._finish(user_message, display, "sleepy", "budget-local-fallback", True, observation, related_project)
         router_start = time.perf_counter()
         self._model_router_invoked = True
-        routed = self.model_router.route(
-            prompt,
-            user_message,
-            self.life.mood,
-            self.privacy.settings,
-            observation=observation,
-            memory_hints=self._approved_cloud_memory_hints(user_message),
-            fast_category=classified.category,
-            local_brain_confidence=getattr(self, "_active_local_brain_confidence", "n/a"),
-            local_brain_handled=getattr(self, "_active_local_brain_handled", None),
-            requires_live_data=gemini_search_allowed,
+        allowed_providers: set[str] = set()
+        if self.privacy.settings.allow_ollama:
+            allowed_providers.add("ollama")
+        if self.privacy.settings.allow_cloud_model and self.privacy.settings.allow_gemini_api:
+            allowed_providers.add("gemini")
+        generation_request = GenerationRequest(
+            user_text=user_message,
+            prepared_prompt=prompt,
+            mood=self.life.mood,
+            time_of_day=observation.time_of_day,
+            context_level=self.privacy.settings.cloud_context_level,
+            approved_context_summaries=tuple(self._approved_cloud_memory_hints(user_message)),
+            response_length=ResponseLength(self.app_settings.settings.reply_style),
             response_instruction=self.reply_style.instruction(
                 self.app_settings.settings.reply_style,
                 user_message,
             ),
+            search_grounding_allowed=gemini_search_allowed,
+            allowed_provider_ids=frozenset(allowed_providers),
         )
+        routed = self.generation_service.generate(generation_request)
         self.budget.update(model_budget, model_started)
-        if model_budget.budget_exceeded and not routed.reply_text.strip():
-            routed.reply_text = random.choice(BUDGET_FALLBACKS)
-            routed.provider_used = "fallback"
-            routed.model_used = "budget-local-fallback"
-            routed.fallback_used = True
-            routed.error = "response budget exceeded"
         # Gemini owns its temporary health state. Do not let a cloud outage
         # poison the legacy provider-wide cooldown used by local Ollama.
-        if routed.provider_used in {"ollama", "nvidia", "cloud"}:
+        if routed.provider_id == "ollama":
             self.health.record_provider_result(
-                routed.provider_used,
-                routed.duration_ms,
-                not routed.error or routed.provider_used == "ollama",
-                routed.error,
+                routed.provider_id,
+                routed.latency_ms,
+                routed.success,
+                routed.error_message or None,
             )
-        print(
-            "RAW AI REPLY: "
-            + (
-                "[model response omitted]"
-                if routed.model_router_used
-                else routed.reply_text
-            )
-        )
+        print("RAW AI REPLY: [model response omitted]")
 
-        display, tagged_mood = self._clean_model_reply(routed.reply_text)
-        if self._is_low_quality_model_reply(display) and not routed.error and routed.provider_used in {"ollama", "gemini"}:
+        if routed.success:
+            display, tagged_mood = self._clean_model_reply(routed.text)
+        else:
+            display = self.generation_service.present_error(routed)
+            tagged_mood = "thinking"
+        if self._is_low_quality_model_reply(display) and routed.success and routed.provider_id in {"ollama", "gemini"}:
             retry_prompt = (
                 f"System: {context.system_prompt}\n\n"
                 "Answer the user's request directly and usefully. Include concrete information. "
                 "Do not reply with a stage direction, cute filler, or character-only reaction.\n"
                 f"User: {user_message}\nFibi:"
             )
-            retry = self.model_router.route(
-                retry_prompt,
-                user_message,
-                self.life.mood,
-                self.privacy.settings,
-                observation=observation,
-                memory_hints=[],
-                fast_category=classified.category,
-                local_brain_confidence=getattr(self, "_active_local_brain_confidence", "n/a"),
-                local_brain_handled=getattr(self, "_active_local_brain_handled", None),
-                requires_live_data=gemini_search_allowed,
-                response_instruction=self.reply_style.instruction(
-                    self.app_settings.settings.reply_style,
-                    user_message,
-                ),
+            retry = self.generation_service.generate(
+                GenerationRequest(
+                    user_text=user_message,
+                    prepared_prompt=retry_prompt,
+                    mood=self.life.mood,
+                    time_of_day=observation.time_of_day,
+                    context_level="minimal",
+                    response_length=ResponseLength(self.app_settings.settings.reply_style),
+                    response_instruction=self.reply_style.instruction(
+                        self.app_settings.settings.reply_style,
+                        user_message,
+                    ),
+                    search_grounding_allowed=gemini_search_allowed,
+                    allowed_provider_ids=frozenset(allowed_providers),
+                )
             )
             print("RAW AI REPLY: [model response omitted]")
-            display, tagged_mood = self._clean_model_reply(retry.reply_text)
+            if retry.success:
+                display, tagged_mood = self._clean_model_reply(retry.text)
+            else:
+                display = self.generation_service.present_error(retry)
+                tagged_mood = "thinking"
             routed = retry
 
-        if self._is_low_quality_model_reply(display) and not routed.error:
+        if self._is_low_quality_model_reply(display) and routed.success:
             display = "The selected model did not return a useful answer. Please try again."
             tagged_mood = "thinking"
-            routed.error = "selected provider returned a low-quality reply"
-            routed.fallback_used = True
 
         used_fallback = is_effectively_empty(display)
         if used_fallback:
-            selected = self.model_router.selected_provider().title()
+            selected = self.provider_selection.get_selected_provider_id().title()
             display = f"{selected} could not answer. The selected provider was not changed."
             tagged_mood = "thinking"
         print(f"FINAL_REPLY_TIME_MS: {(time.perf_counter() - router_start) * 1000:.1f}")
         self.health.record_reply(
             (time.perf_counter() - route_started) * 1000,
-            routed.provider_used,
+            routed.provider_id or "fallback",
             fast_path=False,
-            model_latency_ms=routed.duration_ms,
-            slowest_step="model_router",
+            model_latency_ms=routed.latency_ms,
+            slowest_step="provider_generation",
         )
 
         return self._finish(
             user_message,
             display,
             tagged_mood,
-            routed.model_used,
-            used_fallback or routed.fallback_used or bool(routed.error),
+            routed.model_id if routed.success else "local-fallback",
+            used_fallback or routed.fallback_used or not routed.success,
             observation,
             related_project,
         )
@@ -4130,7 +4206,7 @@ class FibiCore:
         )
         self._save_repetition()
         provider_used = (
-            self.model_router.last_provider_used or "none"
+            self.provider_diagnostics.snapshot().last_active_provider_id or "none"
             if router_was_used
             else "local" if model_used.startswith("local") or "fallback" in model_used else "model"
         )

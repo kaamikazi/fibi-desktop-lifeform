@@ -11,6 +11,8 @@ predictable, private, and documented.
 - Separate on-demand Control Center.
 - Reliable concise text chat.
 - Manual Gemini or Ollama selection; no silent provider switching.
+- Typed provider registry, selection, generation, diagnostics, and error
+  normalization behind an experimental internal API.
 - Safe app, folder, URL, web-search, and registered-project opening.
 - Basic registered-project file listing/search/read within approved roots.
 - Simple reviewed memory viewer/editor/export/delete controls.
@@ -26,6 +28,8 @@ predictable, private, and documented.
 - Advanced project patch/check workflows.
 - Browser research helpers beyond opening and user-provided text.
 - Automatic semantic memory extraction and FAISS retrieval.
+- Automatic provider fallback; the compatibility setting remains explicit,
+  disabled by default, and visibly reports when used.
 
 ## Excluded
 

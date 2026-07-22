@@ -88,7 +88,11 @@ class ApplicationRuntime:
 
         checks = {
             "memory": getattr(self.core, "memory", None) is self.services.memory,
-            "provider_registry": getattr(self.core, "model_router", None) is self.services.model_router,
+            "legacy_provider_router": getattr(self.core, "model_router", None) is self.services.model_router,
+            "provider_registry": getattr(self.core, "provider_registry", None) is self.services.provider_registry,
+            "provider_selection": getattr(self.core, "provider_selection", None) is self.services.provider_selection,
+            "provider_generation": getattr(self.core, "generation_service", None) is self.services.generation_service,
+            "provider_diagnostics": getattr(self.core, "provider_diagnostics", None) is self.services.provider_diagnostics,
             "tts": getattr(self.core, "tts_manager", None) is self.services.tts_manager,
             "actions": getattr(self.core, "desktop_actions", None) is self.services.desktop_actions,
             "project": getattr(self.core, "project_workspace", None) is self.services.project_workspace,

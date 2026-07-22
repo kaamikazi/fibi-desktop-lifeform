@@ -16,7 +16,11 @@ flowchart TD
     Runtime --> Center["Control Center"]
     Pet --> Companion["Companion use cases"]
     Center --> Companion
-    Companion --> Providers["LanguageProvider"]
+    Companion --> Generation["CompanionGenerationService"]
+    Generation --> Selection["ProviderSelectionService"]
+    Generation --> Registry["ProviderRegistry"]
+    Registry --> Gemini["Gemini adapter"]
+    Registry --> Ollama["Ollama adapter"]
     Companion --> Memory["MemoryService"]
     Companion --> Speech["Speech services"]
     Companion --> Actions["DesktopActionService"]
@@ -45,7 +49,7 @@ flowchart TD
 | Pet | `ui/fibi_pet_window.py` plus inherited `FibiWindow` behavior |
 | Control Center | dialogs and window behavior in `ui/fibi_window.py` |
 | Companion/router | `engines/core.py`, `engines/routers/` |
-| Providers | `engines/model_router.py`, `model_engine.py`, `providers/` |
+| Providers | `services/providers/` with compatibility adapters over `model_engine.py` and `providers/gemini_provider.py` |
 | Memory | `memory_engine.py`, `memory_care_engine.py`, `rag/` |
 | Speech | `speech_recognition_engine.py`, `voice/`, wake/RVC engines |
 | Actions | action intent, permission, confirmation, app index, desktop action engines |
@@ -68,6 +72,36 @@ paths and the optional environment file once, constructs an explicit
 `shutdown()` operations. The Pet receives its core from this runtime, and the
 Control Center opened by the Pet reuses the same core. GUI smoke verifies the
 provider registry, memory, TTS, action, project, and STT identities.
+
+## Provider Boundary
+
+`fibi.services.providers` is the experimental 0.4 provider API. Core prepares a
+`GenerationRequest`; the generation service resolves the manually selected
+provider, calls its adapter, and returns a normalized `GenerationResult`.
+Provider adapters own SDK-specific translation only. They do not own Fibi's
+personality, memory policy, privacy policy, routing, or UI.
+
+Provider IDs are stable lowercase strings: `gemini` and `ollama`. Selection is
+persisted by `ProviderSelectionService` and never changes because generation
+failed. Automatic fallback is disabled by default. When the user explicitly
+enables fallback, only eligible temporary failures may use the configured
+fallback, the response says which provider answered, and the selected provider
+remains unchanged.
+
+The request contains prepared text and already-approved context summaries; it
+never contains API keys or service objects. `ProviderDiagnostics` retains only
+safe metadata such as IDs, model, latency, retry count, error category, and
+fallback/search flags. Prompts and responses are deliberately not retained.
+
+`ModelRouter` remains a compatibility facade while old status views and tests
+are migrated. New generation code must depend on the provider service rather
+than calling that router directly.
+
+The existing UI submission worker remains responsible for executing
+`FibiCore.respond` away from the Qt thread and suppressing stale results. The
+provider subsystem is synchronous by design and creates no executor per
+request; runtime shutdown therefore continues to own the established worker
+lifecycle.
 
 Feature workers remain opt-in. Wake-word work must not start unless the saved
 setting enables it. Core shutdown currently closes legacy resources; the

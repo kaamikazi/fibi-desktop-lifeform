@@ -43,6 +43,10 @@ class ApplicationServices:
     model: LanguageProvider
     nvidia_model: LanguageProvider
     model_router: Any
+    provider_registry: Any
+    provider_selection: Any
+    generation_service: Any
+    provider_diagnostics: Any
     reactions: Any
     rituals: Any
     motion: Any
@@ -177,6 +181,7 @@ def build_services(configuration: RuntimeConfiguration) -> ApplicationServices:
     from fibi.engines.voice_settings_engine import VoiceSettingsEngine
     from fibi.engines.voice_skin_settings_engine import VoiceSkinSettingsEngine
     from fibi.engines.warmup_engine import WarmupEngine
+    from fibi.services.providers.factory import build_provider_subsystem
 
     life = LifeEngine()
     memory = MemoryEngine()
@@ -191,6 +196,7 @@ def build_services(configuration: RuntimeConfiguration) -> ApplicationServices:
     app_settings = AppSettingsEngine()
     model_router.set_mode(app_settings.settings.language_provider or "ollama")
     model_router.set_automatic_fallback(app_settings.settings.automatic_provider_fallback)
+    provider_subsystem = build_provider_subsystem(model_router, app_settings)
     app_index = AppIndexEngine()
     secret_sanitizer = SecretSanitizer()
     context_engine = ContextEngine(secret_sanitizer)
@@ -211,6 +217,10 @@ def build_services(configuration: RuntimeConfiguration) -> ApplicationServices:
         model=model,
         nvidia_model=nvidia_model,
         model_router=model_router,
+        provider_registry=provider_subsystem.registry,
+        provider_selection=provider_subsystem.selection,
+        generation_service=provider_subsystem.generation,
+        provider_diagnostics=provider_subsystem.diagnostics,
         reactions=reactions,
         rituals=RitualEngine(reactions, life.ritual_states),
         motion=MotionEngine(),
