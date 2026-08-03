@@ -27,6 +27,10 @@ routing, response cleanup, and presentation. It delegates only provider choice
 and text generation. The composition root creates one provider subsystem shared
 by the Pet and Control Center.
 
+Provider diagnostics subscribe to manual selection changes, so safe status
+metadata reflects the current configured choice even before the next model
+request. This synchronization records IDs and configuration booleans only.
+
 ## Manual Selection And Fallback
 
 Generation always begins with the manually selected provider. A failure never
@@ -76,4 +80,7 @@ views move to `ProviderDiagnostics`.
 Tests use in-memory provider doubles and cover registration, persistence,
 manual Gemini/Ollama routing, explicit fallback, normalized errors, secret-free
 diagnostics, Core delegation, and shared runtime identity. Automated tests make
-no real provider requests.
+no real provider requests. Lightweight AST checks also prevent Core and UI from
+importing provider SDKs, keep adapters independent of PyQt and memory storage,
+centralize provider-service construction in the factory, and prevent adapters
+from changing manual selection.

@@ -49,6 +49,12 @@ def build_provider_subsystem(
         selected.configuration_status().configured,
     )
 
+    def sync_selection_diagnostics(provider_id: str) -> None:
+        configuration = registry.get(provider_id).configuration_status()
+        diagnostics.selection_changed(provider_id, configuration.configured)
+
+    selection.add_listener(sync_selection_diagnostics)
+
     def mirror(result: GenerationResult) -> None:
         router.last_attempted_provider = result.attempted_provider_id
         router.last_provider_used = result.provider_id if result.success else ""
