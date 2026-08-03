@@ -1,6 +1,6 @@
 # Memory Migration Plan
 
-Status: design only. Real data migration is blocked.
+Status: Stage 1 read boundary implemented. Real data migration remains blocked.
 
 ## Safety Principles
 
@@ -51,15 +51,15 @@ content, no created files, apply rejection.
 
 **Failure:** Return a sanitized blocker and do not initialize missing stores.
 
-## Stage 1: Authoritative Read Model
+## Stage 1: Normalized Read Model
 
 **Entry:** ADR 0009 accepted; target schema and `MemoryService` read protocol are
 reviewed.
 
-**Work:** Inject one read-only service through the composition root. Add legacy,
-RAG, and synthetic adapters that normalize into target records without writing
-them. Add an ownership-aware Context Broker behind a feature flag that defaults
-off.
+**Work:** Inject one read-only service through the composition root. Add legacy
+and RAG adapters that normalize into target records without writing them. Add a
+synthetic-only shadow comparison and a disconnected Context Broker preview;
+both default off.
 
 **Exit:** Core, Memory Viewer, and commands can be characterized through the
 read contract; production writes remain unchanged.
@@ -67,10 +67,12 @@ read contract; production writes remain unchanged.
 **Tests:** Contract tests for category/status/consent/provenance, provider
 independence, unavailable storage, and shared runtime identity.
 
-**Validation:** Legacy and target projections have reconciled sanitized counts;
-no provider or UI imports a repository.
+**Validation:** Synthetic byte-stability, privacy, provenance, runtime identity,
+and architecture checks pass; no provider or UI imports a repository. Real
+source reconciliation is deliberately deferred because Stage 1 does not inspect
+or print production user memory.
 
-**Rollback:** Disable the read feature flag and remove adapter wiring. No data
+**Rollback:** Remove the composition attachment and adapter modules. No data
 rollback is needed.
 
 **User impact:** None unless an opt-in diagnostic comparison is displayed.
@@ -222,7 +224,7 @@ browser content, raw logs, or provider responses.
 
 ## Exact Next Phase
 
-Implement Stage 1 only: a small injected read protocol, compatibility adapters,
-and an off-by-default Context Broker comparison using synthetic fixtures. Do
-not add write methods, import real data, normalize commands, or retire stores in
-that phase.
+Keep Stage 2 blocked until Stage 1 passes a maintained synthetic quality gate
+and the project separately approves production dual-read comparison. The next
+approved work would design content-free mismatch sampling and explicit local
+opt-in; it must not import, rewrite, merge, or retire records.

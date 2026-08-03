@@ -29,6 +29,7 @@ python -m pytest -q
 python app.py --gui-smoke
 python tools/verify_release.py --release-dir "dist/Fibi Chubi"
 python tools/check_memory_boundaries.py
+python tests/smoke_memory_stage1.py
 ```
 
 Tests must mock provider calls and destructive/visible desktop actions. Unit
@@ -121,6 +122,19 @@ python -m fibi.tools.memory_migrate --dry-run
 It prints counts and schemas only, does not initialize missing stores, and has
 no apply mode. Memory tests use temporary directories and synthetic content.
 They must not inspect a developer's `data/` directory.
+
+Memory Stage 1 is documented in the
+[read-boundary guide](architecture/MEMORY_STAGE_1_READ_BOUNDARY.md) and
+[ADR 0010](decisions/0010-read-only-memory-query-boundary.md). New Stage 1
+adapters must expose reads only, reuse an existing runtime owner, use immutable
+query-only SQLite access, preserve source references, and emit content-free
+failures. Run shadow comparison only through synthetic tests or:
+
+```powershell
+python tools/run_memory_shadow_fixture.py
+```
+
+Do not enable it at startup or point it at real user data.
 
 Before a future write migration can ship, it needs a verified SQLite backup,
 restore rehearsal, one transaction, source mapping, duplicate/conflict report,

@@ -28,9 +28,18 @@ are retired in stages.
 - Secret-like paths and content are rejected before ingestion persistence.
 - Deleted, expired, rejected, revoked, archived, or unapproved records cannot be
   returned as ordinary context.
+- Stage 1 `MemoryQueryService` exposes no mutation operation and is constructed
+  only by `fibi.app.composition`.
+- Stage 1 adapters may read existing legacy/RAG storage but may not call
+  ingestion, access-marking, update, delete, or index-rebuild methods.
+- `ContextBrokerPreview` cannot import providers, RAG repositories, or SQLite;
+  it receives already-normalized candidates and is disconnected by default.
+- Companion state and operational audit owners cannot be registered as Stage 1
+  memory sources.
 
 `python tools/check_memory_boundaries.py` runs lightweight AST checks for the
-enforceable import rules. Behavioral tests cover policy and retrieval rules.
+enforceable import, construction, and mutation-call rules. Behavioral tests
+cover policy, byte-stable reads, runtime identity, and retrieval rules.
 
 ## Provider Boundary
 

@@ -9,6 +9,16 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
+from fibi.memory.query_models import (
+    MemoryListFilter,
+    MemoryQueryHealth,
+    MemoryQueryRequest,
+    MemoryQueryResult,
+    MemoryRecordView,
+    MemorySourceHealth,
+    MemorySourceReference,
+)
+
 
 @runtime_checkable
 class LanguageProvider(Protocol):
@@ -33,6 +43,23 @@ class MemoryService(Protocol):
     def update_memory(self, memory_id: int, **kwargs: Any) -> Any: ...
 
     def delete_memory(self, memory_id: int) -> bool: ...
+
+
+@runtime_checkable
+class MemoryQueryService(Protocol):
+    """Stage 1 storage-neutral reads with no mutation capability."""
+
+    def get(self, reference: MemorySourceReference) -> MemoryRecordView | None: ...
+
+    def query(self, request: MemoryQueryRequest) -> MemoryQueryResult: ...
+
+    def list(self, filters: MemoryListFilter) -> MemoryQueryResult: ...
+
+    def health(self) -> MemoryQueryHealth: ...
+
+    def available_sources(self) -> tuple[MemorySourceHealth, ...]: ...
+
+    def build_candidates(self, request: MemoryQueryRequest) -> MemoryQueryResult: ...
 
 
 @runtime_checkable

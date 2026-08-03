@@ -7,12 +7,13 @@ behavior and UI adapters receive the completed graph instead of rebuilding it.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from typing import TYPE_CHECKING, Any, Callable
 
 from fibi.app.contracts import (
     DesktopActionService,
     LanguageProvider,
+    MemoryQueryService,
     ProjectService,
     SpeechToTextService,
     TextToSpeechService,
@@ -89,6 +90,9 @@ class ApplicationServices:
     file_reader: Any
     project_workspace: ProjectService
     project_edit_planner: Any
+    memory_query: MemoryQueryService | None = field(default=None, init=False)
+    memory_shadow_comparison: Any = field(default=None, init=False)
+    context_broker_preview: Any = field(default=None, init=False)
     _partial_stopped: bool = False
 
     def core_arguments(self) -> dict[str, Any]:
@@ -97,7 +101,14 @@ class ApplicationServices:
         return {
             item.name: getattr(self, item.name)
             for item in fields(self)
-            if not item.name.startswith("_") and item.name != "tts_manager"
+            if not item.name.startswith("_")
+            and item.name
+            not in {
+                "tts_manager",
+                "memory_query",
+                "memory_shadow_comparison",
+                "context_broker_preview",
+            }
         }
 
     def stop_partial(self) -> None:
@@ -282,9 +293,41 @@ def build_runtime(
 
             core_factory = FibiCore
         core = core_factory(services=services, tts_manager=services.tts_manager)
+        _attach_memory_read_boundary(services, core)
         return ApplicationRuntime(resolved, services, core)
     except Exception:
         if services is not None:
             services.stop_partial()
         LOGGER.exception("Fibi runtime composition failed")
         raise
+
+
+def _attach_memory_read_boundary(services: ApplicationServices, core: FibiCore) -> None:
+    """Attach Stage 1 reads after Core has created its existing RAG owner."""
+
+    from fibi.engines.secret_sanitizer import SecretSanitizer
+    from fibi.engines.sensitive_memory_guard import SensitiveMemoryGuard
+    from fibi.memory.context_preview import ContextBrokerPreview
+    from fibi.memory.query_service import CompositeMemoryQueryService
+    from fibi.memory.read_adapters import LegacyMemoryReadAdapter, RAGMemoryReadAdapter
+    from fibi.memory.read_policy import MemoryReadPolicy
+    from fibi.memory.shadow_comparison import MemoryShadowComparison, MemoryShadowSettings
+
+    if services.memory_query is not None:
+        return
+    sanitizer = getattr(services, "secret_sanitizer", None) or SecretSanitizer()
+    guard = getattr(core, "sensitive_memory_guard", None) or SensitiveMemoryGuard(sanitizer)
+    policy = MemoryReadPolicy(sanitizer, guard)
+    router = getattr(core, "memory_router", None)
+    facade = getattr(router, "rag_memory", None)
+    rag_service = getattr(facade, "service", None)
+    legacy_adapter = LegacyMemoryReadAdapter(services.memory, policy)
+    rag_adapter = RAGMemoryReadAdapter(rag_service, policy)
+    query_service = CompositeMemoryQueryService((legacy_adapter, rag_adapter))
+    services.memory_query = query_service
+    services.memory_shadow_comparison = MemoryShadowComparison(
+        query_service.source_adapters,
+        query_service,
+        MemoryShadowSettings(enabled=False),
+    )
+    services.context_broker_preview = ContextBrokerPreview(sanitizer, enabled=False)

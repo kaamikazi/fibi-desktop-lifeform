@@ -87,8 +87,11 @@ and index entries.
 
 ## Context And Provider Controls
 
-The Context Broker returns bounded, sanitized summaries and stable record IDs.
-It excludes candidates, rejected/revoked/deleted/expired/archived records,
+The future Context Broker will return bounded, sanitized summaries and stable
+record IDs. Stage 1 provides only an off-by-default preview that receives
+already-normalized candidates and is disconnected from provider generation.
+It does not access repositories or record usage. The production broker must
+exclude candidates, rejected/revoked/deleted/expired/archived records,
 sensitive records under ordinary policy, and all operational/companion-state
 data. It records only safe metadata such as category, record ID, rank, exclusion
 reason, provider ID, latency, and token/byte count.
@@ -161,6 +164,8 @@ persist but should not retain raw `last_user_message` indefinitely.
 - Chat, actions, voice, and provider selection continue where otherwise safe.
 - Missing/corrupt FAISS falls back to SQLite retrieval and can be rebuilt.
 - Read-only inventory never initializes a missing database or index.
+- Stage 1 reads use immutable query-only SQLite snapshots and do not update
+  access counters, caches, WAL files, or derived indexes.
 - Recovery requires explicit user action when corruption or migration conflict
   could affect data.
 

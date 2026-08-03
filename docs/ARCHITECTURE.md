@@ -121,6 +121,12 @@ setting enables it. Core shutdown currently closes legacy resources; the
 runtime guards that call so it occurs once and also performs best-effort cleanup
 after partial construction.
 
+Memory Migration Stage 1 also attaches exactly one read-only
+`MemoryQueryService` after Core has initialized its existing compatibility RAG
+service. Its adapters reuse the runtime-owned legacy and RAG objects. The new
+boundary is not called by current Core retrieval, and its shadow comparison and
+Context Broker preview are both disabled by default.
+
 ## Composition Guidance
 
 Contributors adding a top-level service should define only the small structural
@@ -162,12 +168,16 @@ privacy policy, and non-destructive migration stages are documented in:
 - [Memory system audit](architecture/MEMORY_SYSTEM_AUDIT.md)
 - [Memory target architecture](architecture/MEMORY_TARGET_ARCHITECTURE.md)
 - [Memory migration plan](architecture/MEMORY_MIGRATION_PLAN.md)
+- [Memory Stage 1 read boundary](architecture/MEMORY_STAGE_1_READ_BOUNDARY.md)
+- [Memory shadow comparison](architecture/MEMORY_SHADOW_COMPARISON.md)
 - [Memory privacy model](security/MEMORY_PRIVACY_MODEL.md)
 - [ADR 0009](decisions/0009-authoritative-user-controlled-memory.md)
+- [ADR 0010](decisions/0010-read-only-memory-query-boundary.md)
 
-The proposed Context Broker will be the only route from approved memory to a
-generation request. It is not yet the production authority. Do not add new
-memory writers while the staged read-model migration is pending.
+The future Context Broker remains the intended route from approved memory to a
+generation request. Stage 1 includes only a disconnected preview; it is not a
+production authority and sends no context to a provider. Do not add new memory
+writers while the staged migration is pending.
 
 ## Migration Strategy
 

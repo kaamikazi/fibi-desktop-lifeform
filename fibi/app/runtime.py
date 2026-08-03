@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from threading import RLock
 from typing import TYPE_CHECKING, Any
 
-from fibi.app.contracts import CoreRuntime
+from fibi.app.contracts import CoreRuntime, MemoryQueryService
 from fibi.environment import EnvironmentStatus
 from fibi.runtime_paths import RuntimePathInfo
 
@@ -55,6 +55,15 @@ class ApplicationRuntime:
     def is_shutdown(self) -> bool:
         return self._shutdown
 
+    @property
+    def memory_query(self) -> MemoryQueryService:
+        """Expose the one Stage 1 query service owned by this runtime."""
+
+        service = self.services.memory_query
+        if service is None:
+            raise RuntimeError("memory query service is not attached")
+        return service
+
     def start(self) -> bool:
         """Mark this runtime active; feature workers remain opt-in."""
 
@@ -88,6 +97,11 @@ class ApplicationRuntime:
 
         checks = {
             "memory": getattr(self.core, "memory", None) is self.services.memory,
+            "memory_query": (
+                self.services.memory_query is not None
+                and getattr(getattr(self.core, "services", None), "memory_query", None)
+                is self.services.memory_query
+            ),
             "legacy_provider_router": getattr(self.core, "model_router", None) is self.services.model_router,
             "provider_registry": getattr(self.core, "provider_registry", None) is self.services.provider_registry,
             "provider_selection": getattr(self.core, "provider_selection", None) is self.services.provider_selection,

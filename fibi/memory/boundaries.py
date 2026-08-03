@@ -44,6 +44,37 @@ def scan_memory_boundaries(project_root: Path) -> list[BoundaryViolation]:
         violations.extend(
             _forbidden_imports(root, vector_path, "derived_index_authority", ("sqlite3", "fibi.rag.repository"))
         )
+    context_preview = root / "fibi" / "memory" / "context_preview.py"
+    violations.extend(
+        _forbidden_imports(
+            root,
+            context_preview,
+            "context_preview_provider_access",
+            ("fibi.providers", "fibi.services.providers", "fibi.rag", "sqlite3"),
+        )
+    )
+    read_adapters = root / "fibi" / "memory" / "read_adapters.py"
+    violations.extend(
+        _forbidden_method_calls(
+            root,
+            read_adapters,
+            "memory_read_adapter_mutation",
+            (
+                "add_memory",
+                "update_memory",
+                "delete_memory",
+                "remember_fact",
+                "save",
+                "ingest_file",
+                "mark_accessed",
+                "soft_delete",
+                "rebuild",
+                "rebuild_index",
+                "expire_memories",
+            ),
+        )
+    )
+    violations.extend(_query_service_construction_violations(root))
     runtime_files = [root / "fibi" / "app" / "composition.py", root / "fibi" / "engines" / "core.py"]
     for path in runtime_files:
         violations.extend(
@@ -54,6 +85,63 @@ def scan_memory_boundaries(project_root: Path) -> list[BoundaryViolation]:
                 ("sovereign_brain", "interpreter_brain", "autobiographical_cognition", "cognitive_architecture"),
             )
         )
+    return violations
+
+
+def _forbidden_method_calls(
+    root: Path,
+    path: Path,
+    rule: str,
+    method_names: tuple[str, ...],
+) -> list[BoundaryViolation]:
+    """Find mutation-shaped calls in a module whose role is read-only."""
+
+    if not path.exists():
+        return []
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    except (OSError, SyntaxError) as error:
+        return [BoundaryViolation("source_parse", _relative(root, path), 0, type(error).__name__)]
+    forbidden = set(method_names)
+    return [
+        BoundaryViolation(rule, _relative(root, path), node.lineno, node.func.attr)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr in forbidden
+    ]
+
+
+def _query_service_construction_violations(root: Path) -> list[BoundaryViolation]:
+    """Keep production Stage 1 object ownership in the composition root."""
+
+    allowed = (root / "fibi" / "app" / "composition.py").resolve()
+    constructed_types = {
+        "CompositeMemoryQueryService",
+        "LegacyMemoryReadAdapter",
+        "RAGMemoryReadAdapter",
+        "MemoryShadowComparison",
+        "ContextBrokerPreview",
+    }
+    violations: list[BoundaryViolation] = []
+    for path in (root / "fibi").rglob("*.py"):
+        if path.resolve() == allowed:
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        except (OSError, SyntaxError) as error:
+            violations.append(BoundaryViolation("source_parse", _relative(root, path), 0, type(error).__name__))
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in constructed_types:
+                violations.append(
+                    BoundaryViolation(
+                        "memory_query_owner",
+                        _relative(root, path),
+                        node.lineno,
+                        node.func.id,
+                    )
+                )
     return violations
 
 
