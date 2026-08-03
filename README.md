@@ -129,12 +129,29 @@ edit, delete, and export these records. SQLite is the dependable baseline;
 semantic retrieval is an optional implementation detail, not a requirement for
 small memory collections.
 
+The current beta still contains legacy and RAG compatibility stores. A
+cross-store migration has not occurred, and FAISS remains experimental derived
+data rather than an authoritative copy. The staged plan preserves legacy data,
+requires backups and rollback before any write migration, and keeps providers
+outside the memory repository boundary. See the
+[memory audit](docs/architecture/MEMORY_SYSTEM_AUDIT.md),
+[target architecture](docs/architecture/MEMORY_TARGET_ARCHITECTURE.md),
+[migration plan](docs/architecture/MEMORY_MIGRATION_PLAN.md), and
+[privacy model](docs/security/MEMORY_PRIVACY_MODEL.md).
+
 ```text
 /memory remember <fact>
 /memory recall <topic>
 /memory forget <topic>
 /memory recent
 /memory stats
+```
+
+Contributors may run the content-free structural preflight against a chosen
+synthetic or local data directory. It is read-only and has no apply mode:
+
+```powershell
+python -m fibi.tools.memory_migrate --dry-run
 ```
 
 ## Development
@@ -152,6 +169,7 @@ Contributor documentation:
 
 - [Development guide](docs/DEVELOPMENT.md)
 - [Architecture](docs/ARCHITECTURE.md)
+- [Architecture boundaries](docs/architecture/BOUNDARIES.md)
 - [Architecture audit](docs/ARCHITECTURE_AUDIT.md)
 - [Product direction](docs/PRODUCT_DIRECTION.md)
 - [Roadmap](docs/ROADMAP.md)

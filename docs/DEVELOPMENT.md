@@ -28,6 +28,7 @@ python -m compileall -q .
 python -m pytest -q
 python app.py --gui-smoke
 python tools/verify_release.py --release-dir "dist/Fibi Chubi"
+python tools/check_memory_boundaries.py
 ```
 
 Tests must mock provider calls and destructive/visible desktop actions. Unit
@@ -43,6 +44,10 @@ application launch.
 - Keep the selected provider manual and deterministic.
 - Route all desktop effects through permission and action services.
 - Do not add permanent memory writes without consent and review behavior.
+- Keep user-approved memory, user-created notes/projects, companion state,
+  temporary context, audits, and derived indexes as separate data classes.
+- Treat SQLite records as authoritative and FAISS/embeddings/caches as
+  disposable derived data.
 - Keep optional features import-safe when their dependency is absent.
 
 ## Adding A Language Provider
@@ -102,6 +107,24 @@ developer's API key or running Ollama service.
 Significant boundaries, persistence formats, permissions, provider behavior,
 plugin APIs, and supported-platform decisions require an ADR in
 `docs/decisions/`. Prefer compatibility adapters and staged migrations.
+
+Memory changes must follow
+[ADR 0009](decisions/0009-authoritative-user-controlled-memory.md) and the
+[migration plan](architecture/MEMORY_MIGRATION_PLAN.md). Never run the legacy
+RAG migration helper on real data. The currently supported audit command is a
+read-only structural preflight:
+
+```powershell
+python -m fibi.tools.memory_migrate --dry-run
+```
+
+It prints counts and schemas only, does not initialize missing stores, and has
+no apply mode. Memory tests use temporary directories and synthetic content.
+They must not inspect a developer's `data/` directory.
+
+Before a future write migration can ship, it needs a verified SQLite backup,
+restore rehearsal, one transaction, source mapping, duplicate/conflict report,
+fault-injected rollback tests, sanitized diagnostics, and explicit confirmation.
 
 Top-level dependencies are wired only in `fibi/app/composition.py`. Add a
 minimal protocol in `fibi/app/contracts.py` when a consumer needs a replaceable

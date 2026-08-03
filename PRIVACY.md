@@ -8,6 +8,14 @@ The user owns Fibi's notebook. Memories can be reviewed, searched, edited, delet
 
 Secrets, passwords, API keys, raw private browser text, and project secrets should not be stored as memories.
 
+The current beta has overlapping legacy and RAG stores, so complete cross-store
+deletion is a known migration requirement rather than a finished guarantee.
+Fibi's target memory authority stores only approved facts, preferences, project
+memories, and selected summaries. Temporary conversation, user notes/projects,
+companion state, operational audits, and derived FAISS indexes have separate
+owners. See the [memory privacy model](docs/security/MEMORY_PRIVACY_MODEL.md)
+and [migration plan](docs/architecture/MEMORY_MIGRATION_PLAN.md).
+
 ## Cloud and Providers
 
 Cloud providers are disabled by default. If a user configures a provider, only the context explicitly sent through that configured provider flow should leave the machine.

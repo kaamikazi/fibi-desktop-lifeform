@@ -16,6 +16,9 @@ predictable, private, and documented.
 - Safe app, folder, URL, web-search, and registered-project opening.
 - Basic registered-project file listing/search/read within approved roots.
 - Simple reviewed memory viewer/editor/export/delete controls.
+- A documented, user-controlled memory direction with structural inventory and
+  privacy guards. Existing legacy/RAG compatibility remains visible and no
+  destructive migration is part of 0.4.
 - Push-to-talk with visible microphone state.
 - Edge TTS by default.
 - Persisted settings, permission controls, health diagnostics, and logs.
@@ -28,6 +31,8 @@ predictable, private, and documented.
 - Advanced project patch/check workflows.
 - Browser research helpers beyond opening and user-provided text.
 - Automatic semantic memory extraction and FAISS retrieval.
+- The authoritative memory write cutover, real legacy import, unified deletion,
+  and legacy-store retirement described by ADR 0009.
 - Automatic provider fallback; the compatibility setting remains explicit,
   disabled by default, and visibly reports when used.
 
@@ -49,6 +54,9 @@ predictable, private, and documented.
 - Clean environment install and portable build pass.
 - Secret/release-content scans pass.
 - No known orphan worker or dirty-shutdown bug.
+- No secret-like document path/content enters memory ingestion.
+- Memory audit/migration diagnostics are read-only, content-free, and tested
+  against synthetic stores only.
 - README, security, privacy, development, and release docs match the build.
 
 ## Support Statement

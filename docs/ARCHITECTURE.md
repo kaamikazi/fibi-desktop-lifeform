@@ -138,11 +138,36 @@ boundary; the core is not being split in one high-risk rewrite.
 ## Data And Privacy
 
 - Writable data lives under the configured runtime-data directory.
-- SQLite is the authoritative store for supported personal memory.
+- SQLite is the intended authoritative store for supported personal memory.
+  The current runtime still has overlapping legacy and RAG representations, so
+  cross-store edit/delete guarantees are not yet complete.
 - Secrets come from explicit environment/config loading and are never logged.
 - Raw audio is not retained.
 - No telemetry is sent by default.
 - Project and plugin access is capability-limited and user-approved.
+
+## Memory Boundary
+
+Fibi's target product memory is deliberately small: approved facts,
+preferences, project memories, and selected discussion summaries. Notes,
+registered projects, temporary conversation, companion configuration,
+relationship presentation state, operational audits, and derived indexes have
+separate owners. FAISS is optional derived acceleration and never an
+authoritative copy.
+
+The current system is in a compatibility phase with legacy memory, journal,
+structured extraction, and RAG paths. The complete audit, target contract,
+privacy policy, and non-destructive migration stages are documented in:
+
+- [Memory system audit](architecture/MEMORY_SYSTEM_AUDIT.md)
+- [Memory target architecture](architecture/MEMORY_TARGET_ARCHITECTURE.md)
+- [Memory migration plan](architecture/MEMORY_MIGRATION_PLAN.md)
+- [Memory privacy model](security/MEMORY_PRIVACY_MODEL.md)
+- [ADR 0009](decisions/0009-authoritative-user-controlled-memory.md)
+
+The proposed Context Broker will be the only route from approved memory to a
+generation request. It is not yet the production authority. Do not add new
+memory writers while the staged read-model migration is pending.
 
 ## Migration Strategy
 
