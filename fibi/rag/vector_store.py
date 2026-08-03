@@ -12,6 +12,59 @@ import numpy as np
 LOGGER = logging.getLogger(__name__)
 
 
+class _NumpyInnerProductIndex:
+    """Small FAISS-compatible index used when optional acceleration is absent."""
+
+    def __init__(self, dimension: int, vectors: np.ndarray | None = None) -> None:
+        self.d = int(dimension)
+        self.vectors = (
+            np.asarray(vectors, dtype=np.float32).reshape((-1, self.d))
+            if vectors is not None
+            else np.empty((0, self.d), dtype=np.float32)
+        )
+
+    @property
+    def ntotal(self) -> int:
+        return int(self.vectors.shape[0])
+
+    def add(self, vectors: np.ndarray) -> None:
+        incoming = np.asarray(vectors, dtype=np.float32).reshape((-1, self.d))
+        self.vectors = np.concatenate((self.vectors, incoming), axis=0)
+
+    def search(self, query: np.ndarray, top_k: int) -> tuple[np.ndarray, np.ndarray]:
+        query_vectors = np.asarray(query, dtype=np.float32).reshape((-1, self.d))
+        if self.ntotal == 0:
+            shape = (query_vectors.shape[0], int(top_k))
+            return np.full(shape, -np.inf, dtype=np.float32), np.full(shape, -1, dtype=np.int64)
+        scores = query_vectors @ self.vectors.T
+        positions = np.argsort(-scores, axis=1)[:, :top_k]
+        ranked = np.take_along_axis(scores, positions, axis=1)
+        return ranked.astype(np.float32), positions.astype(np.int64)
+
+
+class _NumpyVectorBackend:
+    """Persist the fallback index locally using NumPy's non-pickle format."""
+
+    name = "numpy"
+
+    @staticmethod
+    def IndexFlatIP(dimension: int) -> _NumpyInnerProductIndex:
+        return _NumpyInnerProductIndex(dimension)
+
+    @staticmethod
+    def write_index(index: _NumpyInnerProductIndex, path: str) -> None:
+        with Path(path).open("wb") as stream:
+            np.save(stream, index.vectors, allow_pickle=False)
+
+    @staticmethod
+    def read_index(path: str) -> _NumpyInnerProductIndex:
+        with Path(path).open("rb") as stream:
+            vectors = np.load(stream, allow_pickle=False)
+        if vectors.ndim != 2:
+            raise ValueError("fallback vector index must be two-dimensional")
+        return _NumpyInnerProductIndex(int(vectors.shape[1]), vectors)
+
+
 class FAISSVectorStore:
     """Persisted cosine-similarity FAISS index with an external ID map."""
 
@@ -22,6 +75,7 @@ class FAISSVectorStore:
         self.dimension = int(dimension)
         self.index_path.parent.mkdir(parents=True, exist_ok=True)
         self._faiss = self._import_faiss()
+        self.backend_name = getattr(self._faiss, "name", "faiss")
         self.index = self._load_index()
         self.id_map = self._load_id_map()
 
@@ -81,7 +135,16 @@ class FAISSVectorStore:
 
     def _load_index(self):
         if self.index_path.exists():
-            index = self._faiss.read_index(str(self.index_path))
+            try:
+                index = self._faiss.read_index(str(self.index_path))
+            except Exception as error:
+                LOGGER.warning(
+                    "Vector index %s is incompatible with the %s backend; rebuilding: %s",
+                    self.index_path.name,
+                    self.backend_name,
+                    type(error).__name__,
+                )
+                return self._faiss.IndexFlatIP(self.dimension)
             if index.d != self.dimension:
                 LOGGER.warning("FAISS dimension changed; rebuilding empty index")
                 return self._faiss.IndexFlatIP(self.dimension)
@@ -111,5 +174,6 @@ class FAISSVectorStore:
         try:
             import faiss
         except ImportError as error:
-            raise RuntimeError("faiss-cpu is required for Fibi RAG memory") from error
+            LOGGER.warning("FAISS unavailable; using the local NumPy vector fallback: %s", type(error).__name__)
+            return _NumpyVectorBackend()
         return faiss

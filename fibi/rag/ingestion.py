@@ -19,6 +19,7 @@ from pathlib import Path
 from queue import Queue
 from typing import Protocol
 
+from fibi.engines.secret_sanitizer import SecretSanitizer
 from fibi.rag.config import RAGConfig
 from fibi.rag.service import RAGMemoryService
 from fibi.rag.types import DocumentIngestionResult
@@ -29,6 +30,16 @@ TEXT_SUFFIXES = {".txt", ".md", ".markdown"}
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".webp"}
 AUDIO_SUFFIXES = {".mp3", ".wav", ".m4a", ".flac", ".ogg"}
 VIDEO_SUFFIXES = {".mp4", ".mov", ".mkv", ".avi", ".webm"}
+BLOCKED_SECRET_NAMES = {
+    ".env",
+    "credentials.json",
+    "secrets.json",
+    "id_rsa",
+    "id_dsa",
+    "id_ecdsa",
+    "id_ed25519",
+}
+BLOCKED_SECRET_SUFFIXES = {".key", ".pem", ".p12", ".pfx", ".token", ".secret"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,6 +128,23 @@ class DocumentExtractorFactory:
         return FutureMediaExtractor("unsupported")
 
 
+class IngestionPrivacyPolicy:
+    """Reject secret-bearing paths and content before metadata is persisted."""
+
+    def __init__(self, sanitizer: SecretSanitizer | None = None) -> None:
+        self.sanitizer = sanitizer or SecretSanitizer()
+
+    @staticmethod
+    def blocked_path(path: Path) -> bool:
+        name = path.name.lower()
+        if name in BLOCKED_SECRET_NAMES or name.startswith(".env."):
+            return True
+        return path.suffix.lower() in BLOCKED_SECRET_SUFFIXES
+
+    def blocked_content(self, text: str) -> bool:
+        return bool(text) and self.sanitizer.sanitize(text) != text
+
+
 class Chunker:
     """Character-window chunking with overlap."""
 
@@ -148,18 +176,26 @@ class DocumentIngestionService:
         config: RAGConfig | None = None,
         extractor_factory: DocumentExtractorFactory | None = None,
         chunker: Chunker | None = None,
+        privacy_policy: IngestionPrivacyPolicy | None = None,
     ) -> None:
         self.rag = rag
         self.config = config or rag.config
         self.extractor_factory = extractor_factory or DocumentExtractorFactory()
         self.chunker = chunker or Chunker(self.config.chunk_size_chars, self.config.chunk_overlap_chars)
+        self.privacy_policy = privacy_policy or IngestionPrivacyPolicy()
 
     def ingest_file(self, path: Path) -> DocumentIngestionResult:
         source_path = Path(path)
+        if self.privacy_policy.blocked_path(source_path):
+            LOGGER.warning("Blocked sensitive document path from RAG ingestion: %s", source_path.name)
+            return DocumentIngestionResult("", "[blocked sensitive path]", "", 0, 0, "blocked sensitive path")
         source_hash = _file_hash(source_path)
         document_id = f"doc:{source_hash[:24]}"
         extractor = self.extractor_factory.extractor_for(source_path)
         extracted = extractor.extract(source_path)
+        if self.privacy_policy.blocked_content(extracted.text):
+            LOGGER.warning("Blocked secret-bearing document content from RAG ingestion")
+            return DocumentIngestionResult("", "[blocked secret-bearing document]", extracted.mime_type, 0, 0, "blocked secret-bearing content")
         metadata = {
             **extracted.metadata,
             "file_name": source_path.name,

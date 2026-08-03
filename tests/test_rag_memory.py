@@ -28,10 +28,10 @@ def make_service(root: Path) -> RAGMemoryService:
 
 def test_rag_memory_lifecycle(tmp_path: Path) -> None:
     service = make_service(tmp_path)
-    first = service.add_memory("Imran is building Project Fibi.", category="project", importance=0.8)
+    first = service.add_memory("A synthetic user is building Project Fibi.", category="project", importance=0.8)
     assert first.id is not None
 
-    duplicate = service.add_memory("Imran is building Project Fibi.", category="project")
+    duplicate = service.add_memory("A synthetic user is building Project Fibi.", category="project")
     assert duplicate.id == first.id
 
     results = service.search_memories("Fibi project", top_k=3)
@@ -39,7 +39,7 @@ def test_rag_memory_lifecycle(tmp_path: Path) -> None:
     assert results[0].memory.id == first.id
     assert results[0].score >= results[0].similarity * 0.5
 
-    updated = service.update_memory(first.id, content="Imran is building Fibi as a desktop lifeform.", category="project")
+    updated = service.update_memory(first.id, content="A synthetic user is building Fibi as a desktop lifeform.", category="project")
     assert updated is not None
     assert "lifeform" in updated.content
 
@@ -63,8 +63,8 @@ def test_rag_persistence(tmp_path: Path) -> None:
 
 def test_similarity_threshold(tmp_path: Path) -> None:
     service = make_service(tmp_path)
-    service.add_memory("KamikazeOS is a project name.", category="project")
-    permissive = service.search_memories("KamikazeOS", top_k=1, similarity_threshold=0.01)
+    service.add_memory("Project Lantern is a project name.", category="project")
+    permissive = service.search_memories("Project Lantern", top_k=1, similarity_threshold=0.01)
     strict = service.search_memories("horses and land", top_k=1, similarity_threshold=0.99)
     assert permissive
     assert strict == []

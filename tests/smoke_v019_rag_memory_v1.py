@@ -39,8 +39,8 @@ def run() -> None:
         assert any(result.memory.source_id == "mem-goal-local-first" for result in results)
         assert all(result.memory.source_id for result in results)
 
-        context = service.retrieve_conversation_context("KamikazeOS project", top_k=5)
-        assert "mem-project-kamikazeos" in context.context_text
+        context = service.retrieve_conversation_context("Project Lantern", top_k=5)
+        assert "mem-project-lantern" in context.context_text
 
         summary = evaluate_memory_retrieval(service, dataset)
         assert summary.recall_at_k >= 0.8

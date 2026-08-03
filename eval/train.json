@@ -18,14 +18,14 @@
     "category": "goal"
   },
   {
-    "query": "what project did Imran mention called KamikazeOS?",
-    "expected_source_ids": ["mem-project-kamikazeos"],
+    "query": "what project did Rowan mention called Project Lantern?",
+    "expected_source_ids": ["mem-project-lantern"],
     "top_k": 3,
     "category": "project"
   },
   {
-    "query": "what long term dream involved land and horses?",
-    "expected_source_ids": ["mem-important-land-horses"],
+    "query": "what long term dream involved a studio and garden?",
+    "expected_source_ids": ["mem-important-studio-garden"],
     "top_k": 3,
     "category": "important_moment"
   }

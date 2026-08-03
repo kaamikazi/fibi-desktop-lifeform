@@ -47,7 +47,7 @@ def run_benchmark(dataset_path: Path) -> dict:
         indexing_ms = (time.perf_counter() - seed_started) * 1000
 
         embedding_started = time.perf_counter()
-        service.embedding_provider.embed(["Fibi local memory benchmark", "KamikazeOS project memory"])
+        service.embedding_provider.embed(["Fibi local memory benchmark", "Project Lantern memory"])
         embedding_ms = (time.perf_counter() - embedding_started) * 1000
 
         retrieval_started = time.perf_counter()

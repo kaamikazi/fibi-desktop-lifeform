@@ -37,10 +37,12 @@ class MemoryReviewEngine:
         *,
         guard: SensitiveMemoryGuard | None = None,
         deletion_log_path: Path | None = None,
+        export_dir: Path | None = None,
     ) -> None:
         self.rag_memory = rag_memory
         self.guard = guard or SensitiveMemoryGuard()
         self.deletion_log_path = Path(deletion_log_path or (data_dir() / "memory" / "memory_deletion_log.jsonl"))
+        self.export_dir = Path(export_dir or (data_dir() / "reports"))
         self.deletion_log_path.parent.mkdir(parents=True, exist_ok=True)
 
     def list_memories(
@@ -150,13 +152,9 @@ class MemoryReviewEngine:
         items = self.list_memories(include_archived=request.include_archived, limit=500)
         if selected:
             items = [item for item in items if item.memory_id in selected]
-        safe_items = [
-            item for item in items
-            if not item.deletion_status == "deleted"
-            and (request.include_sensitive or self.guard.can_export(item.text, item.sensitive_flag))
-        ]
+        safe_items = [item for item in items if self._can_export_item(item, request.include_sensitive)]
         stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S")
-        out_dir = data_dir() / "reports"
+        out_dir = self.export_dir
         out_dir.mkdir(parents=True, exist_ok=True)
         json_path = out_dir / f"memory_export_{stamp}.json"
         md_path = out_dir / f"memory_export_{stamp}.md"
@@ -258,6 +256,15 @@ class MemoryReviewEngine:
         metadata[self.REVIEW_KEY] = review
         updated = self.rag_memory.service.update_memory(memory_id, metadata=metadata)
         return MemoryApprovalResult(updated is not None, memory_id, message if updated else "memory crumb not found.")
+
+    def _can_export_item(self, item: MemoryReviewItem, include_sensitive: bool) -> bool:
+        """Never export prohibited content; sensitive records require opt-in and approval."""
+
+        if item.deletion_status == "deleted" or not self.guard.can_export(item.text, item.sensitive_flag):
+            return False
+        if item.sensitive_flag:
+            return bool(include_sensitive and item.approved)
+        return True
 
     def _to_item(self, memory: RAGMemory) -> MemoryReviewItem:
         review = self._review_metadata(memory)

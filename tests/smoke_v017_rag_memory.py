@@ -30,7 +30,7 @@ def run() -> None:
         )
 
         project = service.add_memory(
-            "Imran is building Fibi as a tiny desktop lifeform.",
+            "A synthetic user is building Fibi as a tiny desktop lifeform.",
             category="project",
             source="smoke",
             importance=0.9,
@@ -40,7 +40,7 @@ def run() -> None:
         assert project.id is not None
         assert habit.id is not None
 
-        duplicate = service.detect_duplicate("Imran is building Fibi as a tiny desktop lifeform.")
+        duplicate = service.detect_duplicate("A synthetic user is building Fibi as a tiny desktop lifeform.")
         assert duplicate.is_duplicate
         assert duplicate.existing_id == project.id
 

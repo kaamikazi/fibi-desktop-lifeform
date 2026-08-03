@@ -30,7 +30,7 @@ def make_service(root: Path) -> RAGMemoryService:
 def test_provenance_round_trip_and_context(tmp_path: Path) -> None:
     service = make_service(tmp_path)
     memory = service.add_memory(
-        "Imran is building Fibi as a tiny desktop lifeform.",
+        "A synthetic user is building Fibi as a tiny desktop lifeform.",
         category="project",
         source="test",
         source_id="case-001",

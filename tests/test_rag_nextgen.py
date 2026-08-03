@@ -52,24 +52,24 @@ def test_incremental_index_health_and_cache(tmp_path: Path) -> None:
 
 def test_hybrid_search_finds_keyword_match(tmp_path: Path) -> None:
     service = make_service(tmp_path)
-    service.add_memory("KamikazeOS is Imran's operating system project.", category="project", source_id="kamikaze")
+    service.add_memory("Project Lantern is a synthetic operating system project.", category="project", source_id="lantern")
 
     results = service.search_memories("operating system project", top_k=1, categories=["project"])
     assert results
-    assert results[0].memory.source_id == "kamikaze"
+    assert results[0].memory.source_id == "lantern"
 
 
 def test_document_ingestion_and_background_queue(tmp_path: Path) -> None:
     service = make_service(tmp_path)
     document = tmp_path / "notes.md"
-    document.write_text("Fibi document memory.\n\nKamikazeOS notes live here.\nPrivacy stays local.", encoding="utf-8")
+    document.write_text("Fibi document memory.\n\nProject Lantern notes live here.\nPrivacy stays local.", encoding="utf-8")
 
     ingestion = DocumentIngestionService(service)
     result = ingestion.ingest_file(document)
     assert result.chunk_count >= 1
     assert result.indexed_count == result.chunk_count
 
-    results = service.search_memories("KamikazeOS notes", top_k=3, categories=["document"])
+    results = service.search_memories("Project Lantern notes", top_k=3, categories=["document"])
     assert results
     assert results[0].memory.source == "document"
 
