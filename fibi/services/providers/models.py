@@ -41,6 +41,30 @@ class ProviderConfigurationStatus:
 
 
 @dataclass(frozen=True, slots=True)
+class ProviderModelMetadata:
+    """Provider-neutral model information safe for status and UI surfaces."""
+
+    provider_id: str
+    model_id: str
+    display_name: str
+    configured: bool
+    available: bool
+    capabilities: tuple[str, ...] = ()
+    enabled_capabilities: tuple[str, ...] = ()
+    configuration_source: str = "application settings"
+    safe_options: tuple[tuple[str, str], ...] = ()
+
+    def supports(self, capability: str) -> bool:
+        return capability in self.capabilities
+
+    def capability_enabled(self, capability: str) -> bool:
+        return capability in self.enabled_capabilities
+
+    def option(self, name: str, default: str = "") -> str:
+        return dict(self.safe_options).get(name, default)
+
+
+@dataclass(frozen=True, slots=True)
 class ProviderHealth:
     provider_id: str
     state: str
@@ -103,7 +127,11 @@ class ProviderDiagnosticsSnapshot:
     last_model_id: str = ""
     last_success: bool = False
     last_error_category: str = ""
+    health_state: str = "unknown"
+    retry_after_seconds: int = 0
     last_latency_ms: float = 0.0
+    last_generation_latency_ms: float = 0.0
+    last_fallback_latency_ms: float = 0.0
     retry_count: int = 0
     fallback_enabled: bool = False
     fallback_provider_id: str = ""
@@ -117,4 +145,28 @@ class ProviderDiagnosticsSnapshot:
             selected_provider_id=selected_provider_id,
             selected_provider_configured=configured,
             timestamp=datetime.now().astimezone().isoformat(timespec="seconds"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderContextPreview:
+    """Count-only cloud context preview; no prompt or memory text is retained."""
+
+    user_message_included: bool = True
+    personality_included: bool = True
+    recent_turn_count: int = 0
+    approved_memory_summary_count: int = 0
+
+    def format(self) -> str:
+        return (
+            "Cloud request preview:\n"
+            f"- Current user message: {'included' if self.user_message_included else 'excluded'}\n"
+            f"- Fibi personality instructions: {'included' if self.personality_included else 'excluded'}\n"
+            f"- Recent conversation turns: {self.recent_turn_count}\n"
+            f"- Approved memory summaries: {self.approved_memory_summary_count}\n"
+            "- Raw memory database: excluded\n"
+            "- Browser history/cookies/passwords: excluded\n"
+            "- Project source files: excluded\n"
+            "- Logs and reports: excluded\n"
+            "- API keys and secrets: excluded"
         )

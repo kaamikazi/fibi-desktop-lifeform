@@ -676,7 +676,7 @@ class FibiSettingsDialog(QDialog):
         self.provider_combo.setObjectName("languageProviderCombo")
         self.provider_combo.addItem("LOCAL - Ollama", "ollama")
         self.provider_combo.addItem("CLOUD - Gemini", "gemini")
-        selected = self.core.model_router.selected_provider()
+        selected = self.core.get_selected_provider_id()
         self.provider_combo.setCurrentIndex(1 if selected == "gemini" else 0)
         self.provider_combo.currentIndexChanged.connect(self._refresh_pending_provider_labels)
         provider_row.addWidget(self.provider_combo, 1)
@@ -694,7 +694,7 @@ class FibiSettingsDialog(QDialog):
         self.provider_fallback_status = QLabel(self._automatic_fallback_label())
         provider_layout.addWidget(self.provider_fallback_status)
         self.cloud_label = QLabel(
-            f"Gemini API key: {'configured' if self.core.model_router.gemini.is_configured() else 'not configured'}\n"
+            f"Gemini API key: {'configured' if self.core.get_provider_model_metadata('gemini').configured else 'not configured'}\n"
             + self.core.get_provider_status()
         )
         self.cloud_label.setObjectName("providerStatusDetails")
@@ -821,13 +821,13 @@ class FibiSettingsDialog(QDialog):
         self.setStyleSheet(self._settings_stylesheet())
 
     def _provider_status_heading(self) -> str:
-        configured = self.core.model_router.gemini.is_configured()
-        selected = self.core.model_router.selected_provider()
+        configured = self.core.get_provider_model_metadata("gemini").configured
+        selected = self.core.get_selected_provider_id()
         provider = "CLOUD - Gemini" if selected == "gemini" else "LOCAL - Ollama"
         return f"{provider} | Gemini {'configured' if configured else 'not configured'}"
 
     def _selected_provider_label(self) -> str:
-        selected = str(self.provider_combo.currentData()) if hasattr(self, "provider_combo") else self.core.model_router.selected_provider()
+        selected = str(self.provider_combo.currentData()) if hasattr(self, "provider_combo") else self.core.get_selected_provider_id()
         return f"Selected provider: {'Gemini' if selected == 'gemini' else 'Ollama'}"
 
     def _automatic_fallback_label(self) -> str:
@@ -1623,7 +1623,7 @@ class FibiWindow(QWidget):
     def _provider_badge_details(self, response: FibiResponse | None = None) -> tuple[str, str, str]:
         """Return a concise provider label derived from current runtime state."""
 
-        selected = self.core.model_router.selected_provider()
+        selected = self.core.get_selected_provider_id()
         privacy = self.core.privacy.settings
         gemini_active = bool(
             selected == "gemini"

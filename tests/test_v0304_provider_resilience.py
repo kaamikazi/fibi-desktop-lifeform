@@ -13,6 +13,7 @@ from fibi.engines.model_router import ModelRouter
 from fibi.engines.types import ModelResult, PrivacySettings
 from fibi.providers.gemini_provider import GeminiProvider
 from fibi.providers.types import GeminiProviderConfig
+from fibi.services.providers.models import GenerationRequest
 
 
 @dataclass
@@ -258,22 +259,21 @@ def test_model_discovery_is_cached_and_retry_uses_alternate_candidate() -> None:
     assert api.generated_models[0] != api.generated_models[1]
 
 
-def test_dead_ollama_is_health_checked_and_skipped_without_generation() -> None:
+def test_compatibility_route_uses_authoritative_fallback_without_legacy_probe() -> None:
     api = SequenceModelsAPI([FakeHTTPError(503, "temporary"), FakeHTTPError(503, "temporary")])
     ollama = HealthAwareOllama(healthy=False)
     router = ModelRouter(ollama=ollama, gemini=provider_with(api))
     router.set_automatic_fallback(True)
     result = route(router)
-    assert ollama.health_calls == 1
-    assert ollama.generate_calls == 0
-    assert result.provider_used == "fallback"
-    assert "temporarily unavailable" in result.reply_text
-    assert "asleep" not in result.reply_text
-    assert router.last_fallback_status == "unavailable"
+    assert ollama.health_calls == 0
+    assert ollama.generate_calls == 1
+    assert result.provider_used == "ollama"
+    assert result.fallback_used
+    assert router.last_fallback_status == "used"
 
 
 def test_visible_ollama_fallback_and_diagnostics() -> None:
-    api = SequenceModelsAPI([TimeoutError("timed out")])
+    api = SequenceModelsAPI([TimeoutError("timed out"), TimeoutError("timed out")])
     ollama = HealthAwareOllama(healthy=True)
     router = ModelRouter(ollama=ollama, gemini=provider_with(api))
     router.set_automatic_fallback(True)
@@ -373,14 +373,23 @@ def test_provider_commands_report_health_and_reset_transient_state(tmp_path: Pat
     from tests.smoke_v012_actions import make_core
 
     core, _, _ = make_core(tmp_path / "commands", [], [])
-    api = SequenceModelsAPI([TimeoutError("timed out")])
+    api = SequenceModelsAPI([TimeoutError("timed out"), TimeoutError("timed out")])
     core.model_router = ModelRouter(
         ollama=HealthAwareOllama(healthy=False),
         gemini=provider_with(api),
     )
     core.model_router.set_mode("gemini")
     core.privacy.update(allow_cloud_model=True, allow_gemini_api=True, allow_ollama=True)
-    core.model_router.gemini.generate_reply("safe")
+    core.get_provider_status()
+    generated = core.generation_service.generate(
+        GenerationRequest(
+            user_text="provider test",
+            prepared_prompt="safe",
+            allowed_provider_ids=frozenset({"gemini"}),
+        ),
+        allow_fallback=False,
+    )
+    assert not generated.success
     status = core.respond("/provider status").display_text
     assert "State: degraded" in status
     assert "Last retry count:" in status

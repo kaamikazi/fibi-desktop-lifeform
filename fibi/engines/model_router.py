@@ -1,21 +1,38 @@
-"""Fast provider router for Fibi model calls."""
+"""Deprecated compatibility facade for Fibi's provider subsystem.
+
+New code uses ``ProviderRegistry``, ``ProviderSelectionService``,
+``CompanionGenerationService``, and ``ProviderDiagnostics`` directly. This
+facade remains for legacy constructors and integrations while those callers
+migrate; it owns no providers, fallback policy, persistence, or diagnostics.
+"""
 
 from __future__ import annotations
 
-import time
+import warnings
+from typing import TYPE_CHECKING, Any
 
-from fibi.brain.cleanup import clean_response
-from fibi.engines.cloud_context_sanitizer import CloudContextSanitizer
-from fibi.engines.model_engine import ModelEngine
-from fibi.engines.nvidia_model_engine import NvidiaModelEngine
-from fibi.engines.openai_compatible_provider import OpenAICompatibleProvider
 from fibi.engines.types import ModelRouterResult, Observation, PrivacySettings
-from fibi.providers.gemini_provider import GeminiProvider
-from fibi.providers.types import CloudContextPreview
-from fibi.settings import CLOUD_PROVIDER
+from fibi.services.providers.diagnostics import ProviderDiagnostics
+from fibi.services.providers.generation import CompanionGenerationService
+from fibi.services.providers.models import GenerationRequest
+from fibi.services.providers.registry import ProviderRegistry
+from fibi.services.providers.selection import ProviderSelectionService
+
+if TYPE_CHECKING:
+    from fibi.engines.cloud_context_sanitizer import CloudContextSanitizer
+    from fibi.engines.model_engine import ModelEngine
+    from fibi.engines.nvidia_model_engine import NvidiaModelEngine
+    from fibi.engines.openai_compatible_provider import OpenAICompatibleProvider
+    from fibi.providers.gemini_provider import GeminiProvider
+
 
 class ModelRouter:
-    """Route to the explicitly selected provider without silent switching."""
+    """Read-only compatibility projection over authoritative provider services.
+
+    Removal criteria: no production or supported external caller constructs or
+    calls this class, and one full release has exposed the replacement APIs.
+    Earliest intended removal is Fibi 0.5.
+    """
 
     def __init__(
         self,
@@ -25,48 +42,109 @@ class ModelRouter:
         gemini: GeminiProvider | None = None,
         sanitizer: CloudContextSanitizer | None = None,
     ) -> None:
-        self.ollama = ollama or ModelEngine()
-        self.nvidia = nvidia or NvidiaModelEngine()
-        self.generic_cloud = generic_cloud or OpenAICompatibleProvider()
-        self.gemini = gemini or GeminiProvider()
-        self.sanitizer = sanitizer or CloudContextSanitizer()
-        configured_mode = self.gemini.config.selected_provider
-        self.mode = configured_mode if configured_mode in {"gemini", "ollama"} else "ollama"
-        self.automatic_fallback_enabled = False
-        self.last_provider_used = ""
-        self.last_attempted_provider = ""
-        self.last_fallback_provider = ""
-        self.last_fallback_status = "none"
-        self.last_error_category = ""
-        self.last_duration_ms = 0.0
-        self.last_generation_latency_ms = 0.0
-        self.last_fallback_latency_ms = 0.0
-        self.last_retry_count = 0
+        # These injected implementations are retained only so the centralized
+        # provider factory can adapt old direct constructors.
+        self._ollama = ollama
+        self._nvidia = nvidia
+        self._generic_cloud = generic_cloud
+        self._gemini = gemini
+        self._sanitizer = sanitizer
+        configured = str(getattr(getattr(gemini, "config", None), "selected_provider", "ollama"))
+        self._bootstrap_provider_id = configured if configured in {"gemini", "ollama"} else "ollama"
+        self._bootstrap_fallback_enabled = False
+        self._registry: ProviderRegistry | None = None
+        self._selection: ProviderSelectionService | None = None
+        self._generation: CompanionGenerationService | None = None
+        self._diagnostics: ProviderDiagnostics | None = None
+
+    @property
+    def ollama(self) -> Any:
+        return self._ollama
+
+    @property
+    def nvidia(self) -> Any:
+        return self._nvidia
+
+    @property
+    def generic_cloud(self) -> Any:
+        return self._generic_cloud
+
+    @property
+    def gemini(self) -> Any:
+        return self._gemini
+
+    @property
+    def sanitizer(self) -> Any:
+        return self._sanitizer
+
+    def attach(
+        self,
+        registry: ProviderRegistry,
+        selection: ProviderSelectionService,
+        generation: CompanionGenerationService,
+        diagnostics: ProviderDiagnostics,
+    ) -> None:
+        """Attach the one authoritative runtime subsystem."""
+
+        self._registry = registry
+        self._selection = selection
+        self._generation = generation
+        self._diagnostics = diagnostics
+        self._bootstrap_provider_id = selection.get_selected_provider_id()
+        self._bootstrap_fallback_enabled = generation.fallback_enabled
+
+    def bind_legacy_dependencies(self, *, ollama: Any, gemini: Any, sanitizer: Any) -> None:
+        """Expose factory-owned implementations to verified legacy callers."""
+
+        self._ollama = ollama
+        self._gemini = gemini
+        self._sanitizer = sanitizer
 
     def set_mode(self, mode: str) -> str:
-        previous = self.mode
-        self.mode = mode if mode in {"ollama", "gemini"} else "ollama"
-        if self.mode == "gemini" and previous != "gemini":
-            self.gemini.reset_transient_health()
-        return self.mode
+        """Compatibility forwarder; new code calls selection.select_provider."""
+
+        provider_id = mode if mode in {"ollama", "gemini"} else "ollama"
+        if self._selection is None:
+            self._bootstrap_provider_id = provider_id
+            self._require_generation()
+        if self._selection is None:  # pragma: no cover - factory contract guard
+            return provider_id
+        self._selection.select_provider(provider_id, persist=False)
+        return self._selection.get_selected_provider_id()
 
     def set_automatic_fallback(self, enabled: bool) -> bool:
-        """Update the explicit persisted fallback preference."""
+        """Compatibility forwarder; new code calls generation.set_fallback."""
 
-        self.automatic_fallback_enabled = bool(enabled)
-        return self.automatic_fallback_enabled
+        if self._generation is None:
+            self._bootstrap_fallback_enabled = bool(enabled)
+            self._require_generation()
+        if self._generation is None:  # pragma: no cover - factory contract guard
+            return self._bootstrap_fallback_enabled
+        self._generation.set_fallback(bool(enabled), "ollama")
+        return self._generation.fallback_enabled
 
     def selected_provider(self) -> str:
-        if self.mode == "gemini":
-            return "gemini"
-        if self.mode == "nvidia":
-            return "nvidia"
-        if self.mode == "local":
-            return "local"
-        return "ollama"
+        return (
+            self._selection.get_selected_provider_id()
+            if self._selection is not None
+            else self._bootstrap_provider_id
+        )
 
-    def context_preview(self, approved_memory_summaries: list[str] | None = None) -> CloudContextPreview:
-        return self.sanitizer.preview(approved_memory_summaries=approved_memory_summaries)
+    @property
+    def mode(self) -> str:
+        return self.selected_provider()
+
+    @property
+    def automatic_fallback_enabled(self) -> bool:
+        return (
+            self._generation.fallback_enabled
+            if self._generation is not None
+            else self._bootstrap_fallback_enabled
+        )
+
+    def context_preview(self, approved_memory_summaries: list[str] | None = None):
+        self._warn("context_preview", "CompanionGenerationService.context_preview")
+        return self._require_generation().context_preview(approved_memory_summaries)
 
     def route(
         self,
@@ -82,262 +160,104 @@ class ModelRouter:
         requires_live_data: bool = False,
         response_instruction: str = "",
     ) -> ModelRouterResult:
-        start = time.perf_counter()
-        print("ROUTER START")
-        print("FAST_PATH_USED: false")
-        print(f"FAST_CATEGORY: {fast_category}")
-        print(f"LOCAL_BRAIN_CONFIDENCE: {local_brain_confidence}")
-        print(
-            "LOCAL_BRAIN_HANDLED: "
-            + ("n/a" if local_brain_handled is None else str(local_brain_handled).lower())
-        )
-        print("MODEL_ROUTER_USED: true")
-        self.last_attempted_provider = ""
-        self.last_fallback_provider = ""
-        self.last_fallback_status = "none"
-        self.last_generation_latency_ms = 0.0
-        self.last_fallback_latency_ms = 0.0
-        self.last_retry_count = 0
-        cloud_allowed = bool(privacy.allow_cloud_model and privacy.allow_nvidia_api)
-        gemini_allowed = bool(
-            privacy.allow_cloud_model
-            and privacy.allow_gemini_api
-            and self.mode == "gemini"
-        )
-        generic_enabled = cloud_allowed and CLOUD_PROVIDER == "openai_compatible" and self.generic_cloud.is_available() and self.mode in {"auto", "nvidia"}
-        nvidia_enabled = cloud_allowed and CLOUD_PROVIDER in {"disabled", "nvidia"} and self.nvidia.api_key_available() and self.mode in {"auto", "nvidia"}
-        print(f"CLOUD_ALLOWED: {str(cloud_allowed).lower()}")
-        print(f"GEMINI_ENABLED: {str(gemini_allowed).lower()}")
-        print(f"NVIDIA_ENABLED: {str(nvidia_enabled).lower()}")
-        last_error = ""
+        """Forward a legacy request through the authoritative generation use case."""
 
-        if self.mode == "local":
-            return self._fallback(start, "local mode")
-
-        safe_prompt = self.sanitizer.build_prompt(
-            user_message,
-            mood,
-            privacy.cloud_context_level,
-            memory_hints=memory_hints,
-            observation=observation,
-            response_instruction=response_instruction,
-        )
-        if self.mode == "gemini":
-            if not gemini_allowed:
-                return self._fallback(start, "Gemini is selected but cloud permission is off")
-            self.last_attempted_provider = "gemini"
-            reply = self.gemini.generate_reply(
-                safe_prompt,
-                use_google_search=requires_live_data,
+        del fast_category, local_brain_confidence, local_brain_handled
+        self._warn("route", "CompanionGenerationService.generate")
+        generation = self._require_generation()
+        allowed: set[str] = set()
+        if privacy.allow_ollama:
+            allowed.add("ollama")
+        if privacy.allow_cloud_model and privacy.allow_gemini_api:
+            allowed.add("gemini")
+        result = generation.generate(
+            GenerationRequest(
+                user_text=user_message,
+                prepared_prompt=prompt,
+                mood=mood,
+                time_of_day=observation.time_of_day if observation else "unknown",
+                context_level=privacy.cloud_context_level,
+                approved_context_summaries=tuple(memory_hints or ()),
+                response_instruction=response_instruction,
+                search_grounding_allowed=requires_live_data,
+                allowed_provider_ids=frozenset(allowed),
             )
-            self.last_generation_latency_ms = reply.duration_ms
-            self.last_retry_count = reply.retry_count
-            if reply.text.strip() and not reply.error:
-                return self._done(
-                    start,
-                    "gemini",
-                    reply.model,
-                    reply.text,
-                    True,
-                    False,
-                    None,
-                    attempted_provider="gemini",
-                    retry_count=reply.retry_count,
-                    error_category=reply.error_category,
-                    generation_latency_ms=reply.duration_ms,
-                )
-            last_error = reply.error or "Gemini returned no text"
-            if not self.automatic_fallback_enabled:
-                return self._done(
-                    start,
-                    "fallback",
-                    "local-fallback",
-                    self._gemini_unavailable_message(ollama_available=False),
-                    False,
-                    True,
-                    last_error,
-                    attempted_provider="gemini",
-                    retry_count=reply.retry_count,
-                    error_category=reply.error_category,
-                    generation_latency_ms=reply.duration_ms,
-                )
-            if privacy.allow_ollama:
-                fallback_started = time.perf_counter()
-                if self._ollama_available():
-                    self.last_fallback_provider = "ollama"
-                    self.last_fallback_status = "attempted"
-                    result = self.ollama.generate(prompt)
-                    fallback_latency_ms = (time.perf_counter() - fallback_started) * 1000
-                    self.last_fallback_latency_ms = fallback_latency_ms
-                    print(f"OLLAMA_DURATION_MS: {fallback_latency_ms:.1f}")
-                    if result.raw_text.strip() and not result.error:
-                        self.last_fallback_status = "used"
-                        visible = "Gemini stumbled, so I used Ollama. " + result.raw_text
-                        return self._done(
-                            start,
-                            "ollama",
-                            result.model,
-                            visible,
-                            False,
-                            True,
-                            last_error,
-                            attempted_provider="gemini",
-                            retry_count=reply.retry_count,
-                            error_category=reply.error_category,
-                            generation_latency_ms=reply.duration_ms,
-                            fallback_latency_ms=fallback_latency_ms,
-                        )
-                    self.last_fallback_status = "failed"
-                    last_error = f"{last_error}; Ollama fallback unavailable"
-                else:
-                    self.last_fallback_status = "unavailable"
-                    self.last_fallback_latency_ms = (time.perf_counter() - fallback_started) * 1000
-            return self._done(
-                start,
-                "fallback",
-                "local-fallback",
-                self._gemini_unavailable_message(ollama_available=False),
-                False,
-                True,
-                last_error,
-                attempted_provider="gemini",
-                retry_count=reply.retry_count,
-                error_category=reply.error_category,
-                generation_latency_ms=reply.duration_ms,
-                fallback_latency_ms=self.last_fallback_latency_ms,
-            )
-
-        if self.automatic_fallback_enabled and generic_enabled:
-            reply = self.generic_cloud.generate_reply(safe_prompt)
-            if reply.text.strip() and not reply.error:
-                return self._done(start, "cloud", reply.model, reply.text, True, False, None)
-            last_error = reply.error or "cloud empty"
-            if self.mode == "nvidia":
-                return self._fallback(start, reply.error or "cloud empty")
-
-        if self.automatic_fallback_enabled and nvidia_enabled:
-            result = self.nvidia.generate(safe_prompt)
-            if result.raw_text.strip() and not result.error:
-                return self._done(start, "nvidia", result.model, result.raw_text, True, False, None)
-            last_error = result.error or "nvidia empty"
-            if result.error and ("401" in result.error or "403" in result.error):
-                print("ERROR: NVIDIA auth failed; provider disabled for session")
-            if self.mode == "nvidia":
-                return self._fallback(start, result.error or "nvidia empty")
-
-        if privacy.allow_ollama and self.mode == "ollama":
-            ollama_start = time.perf_counter()
-            result = self.ollama.generate(prompt)
-            print(f"OLLAMA_DURATION_MS: {(time.perf_counter() - ollama_start) * 1000:.1f}")
-            if result.raw_text.strip() and not result.error:
-                return self._done(start, "ollama", result.model, result.raw_text, False, False, None)
-            last_error = result.error or "ollama empty"
-            if self.mode == "ollama":
-                return self._fallback(start, result.error or "ollama empty")
-
-        return self._fallback(start, last_error or "no provider produced text")
-
-    def _fallback(self, start: float, error: str | None = None) -> ModelRouterResult:
-        selected = self.selected_provider().title()
-        text = f"{selected} could not answer. The selected provider was not changed."
-        return self._done(start, "fallback", "local-fallback", text, False, True, error)
-
-    def _done(
-        self,
-        start: float,
-        provider: str,
-        model: str,
-        text: str,
-        was_cloud: bool,
-        fallback: bool,
-        error: str | None,
-        *,
-        attempted_provider: str = "",
-        retry_count: int = 0,
-        error_category: str = "",
-        generation_latency_ms: float = 0.0,
-        fallback_latency_ms: float = 0.0,
-    ) -> ModelRouterResult:
-        duration_ms = (time.perf_counter() - start) * 1000
-        reply = clean_response(text)
-        self.last_provider_used = "" if provider in {"fallback", "none"} else provider
-        self.last_attempted_provider = attempted_provider or self.last_attempted_provider or provider
-        if fallback and provider not in {"fallback", "local", "none"}:
-            self.last_fallback_provider = provider
-            self.last_fallback_status = "used"
-        self.last_duration_ms = duration_ms
-        self.last_error_category = error_category or self._error_category(error)
-        self.last_retry_count = retry_count
-        self.last_generation_latency_ms = generation_latency_ms or self.last_generation_latency_ms
-        self.last_fallback_latency_ms = fallback_latency_ms or self.last_fallback_latency_ms
-        print("ROUTER END")
-        print(f"ROUTER DURATION MS: {duration_ms:.1f}")
-        print(f"PROVIDER_USED: {provider}")
-        print(f"MODEL_USED: {model}")
-        print(f"FALLBACK_USED: {str(fallback).lower()}")
-        print(f"ROUTE_SELECTED: {'local-direct-fallback' if fallback else 'model-router'}")
-        model_response = provider not in {"fallback", "local"} or bool(attempted_provider)
-        print(f"FINAL_REPLY: {'[model response omitted]' if model_response else reply}")
-        print(f"ATTEMPTED_PROVIDER: {self.last_attempted_provider or 'none'}")
-        print(f"FALLBACK_PROVIDER: {self.last_fallback_provider or 'none'}")
-        print(f"RETRY_COUNT: {retry_count}")
-        print(f"PROVIDER_HEALTH_STATE: {self.gemini.status().health_state if self.mode == 'gemini' else 'n/a'}")
-        print(f"GENERATION_LATENCY_MS: {self.last_generation_latency_ms:.1f}")
-        print(f"FALLBACK_LATENCY_MS: {self.last_fallback_latency_ms:.1f}")
+        )
+        text = result.text if result.success else generation.present_error(result)
         return ModelRouterResult(
-            provider,
-            model,
-            duration_ms,
-            was_cloud,
-            fallback,
-            error,
-            reply,
-            self.last_attempted_provider,
-            retry_count,
-            self.last_error_category,
-            self.last_generation_latency_ms,
-            self.last_fallback_latency_ms,
+            result.provider_id or "fallback",
+            result.model_id,
+            result.latency_ms,
+            result.provider_id == "gemini",
+            result.fallback_used or not result.success,
+            result.error_message or None,
+            text,
+            result.attempted_provider_id,
+            result.retry_count,
+            result.error_category.value if result.error_category else "",
+            max(0.0, result.latency_ms - result.fallback_latency_ms),
+            result.fallback_latency_ms,
             True,
         )
 
-    def _ollama_available(self) -> bool:
-        probe = getattr(self.ollama, "health_check", None)
-        if probe is None:
-            return True
-        try:
-            return bool(probe())
-        except Exception:
-            return False
+    @property
+    def last_provider_used(self) -> str:
+        return self._snapshot_value("last_active_provider_id", "")
 
-    def _gemini_unavailable_message(self, *, ollama_available: bool) -> str:
-        category = self.gemini.last_error_category
-        if category in {"temporary_unavailable", "network_error", "timeout"}:
-            local = "The local model is also unavailable." if not ollama_available else ""
-            return f"Gemini is temporarily unavailable. {local} Try again in a moment.".replace("  ", " ").strip()
-        if category in {"rate_limit_error", "quota_error"}:
-            return "Gemini is rate limited, and no local fallback is available. Try again shortly."
-        if category == "authentication_error":
-            return "Gemini configuration needs attention, and no local fallback is available."
-        if category == "model_unavailable":
-            return "The selected Gemini model is unavailable, and no local fallback is running."
-        return "Gemini could not answer, and no local fallback is available. Try again in a moment."
+    @property
+    def last_attempted_provider(self) -> str:
+        return self._snapshot_value("last_attempted_provider_id", "")
 
-    def _error_category(self, error: str | None) -> str:
-        if not error:
-            return ""
-        if self.mode == "gemini" and self.gemini.last_error_category:
-            return self.gemini.last_error_category
-        lowered = error.lower()
-        for category in (
-            "authentication_error",
-            "quota_error",
-            "rate_limit_error",
-            "temporary_unavailable",
-            "timeout",
-            "network_error",
-            "model_unavailable",
-            "malformed_response",
-        ):
-            if category.replace("_", " ") in lowered or category in lowered:
-                return category
-        return "provider_error"
+    @property
+    def last_fallback_provider(self) -> str:
+        snapshot = self._snapshot()
+        return snapshot.fallback_provider_id if snapshot and snapshot.fallback_used else ""
+
+    @property
+    def last_fallback_status(self) -> str:
+        snapshot = self._snapshot()
+        return "used" if snapshot and snapshot.fallback_used else "none"
+
+    @property
+    def last_error_category(self) -> str:
+        return self._snapshot_value("last_error_category", "")
+
+    @property
+    def last_duration_ms(self) -> float:
+        return self._snapshot_value("last_latency_ms", 0.0)
+
+    @property
+    def last_generation_latency_ms(self) -> float:
+        return self._snapshot_value("last_generation_latency_ms", 0.0)
+
+    @property
+    def last_fallback_latency_ms(self) -> float:
+        return self._snapshot_value("last_fallback_latency_ms", 0.0)
+
+    @property
+    def last_retry_count(self) -> int:
+        return self._snapshot_value("retry_count", 0)
+
+    def _snapshot(self):
+        return self._diagnostics.snapshot() if self._diagnostics is not None else None
+
+    def _snapshot_value(self, name: str, default):
+        snapshot = self._snapshot()
+        return getattr(snapshot, name, default) if snapshot is not None else default
+
+    def _require_generation(self) -> CompanionGenerationService:
+        if self._generation is None:
+            from fibi.services.providers.factory import build_compatibility_provider_subsystem
+
+            build_compatibility_provider_subsystem(self)
+        if self._generation is None:  # pragma: no cover - factory contract guard
+            raise RuntimeError("provider compatibility subsystem could not be attached")
+        return self._generation
+
+    @staticmethod
+    def _warn(member: str, replacement: str) -> None:
+        warnings.warn(
+            f"ModelRouter.{member} is deprecated; use {replacement}",
+            DeprecationWarning,
+            stacklevel=3,
+        )

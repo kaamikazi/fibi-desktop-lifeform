@@ -138,13 +138,13 @@ def test_window_position_is_saved(fibi_window: FibiWindow) -> None:
 
 
 def test_provider_badge_tracks_local_cloud_and_fallback(fibi_window: FibiWindow) -> None:
-    fibi_window.core.model_router.set_mode("ollama")
+    fibi_window.core.respond("/provider use ollama")
     fibi_window.core.privacy.settings.allow_cloud_model = False
     fibi_window.core.privacy.settings.allow_gemini_api = False
     fibi_window._refresh_provider_badge()
     assert fibi_window.provider_badge.text() == "LOCAL - Ollama"
 
-    fibi_window.core.model_router.set_mode("gemini")
+    fibi_window.core.respond("/provider use gemini")
     fibi_window.core.privacy.settings.allow_cloud_model = True
     fibi_window.core.privacy.settings.allow_gemini_api = True
     fibi_window._refresh_provider_badge()

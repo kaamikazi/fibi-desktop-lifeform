@@ -10,6 +10,7 @@ from fibi.services.providers.models import (
     ProviderConfigurationStatus,
     ProviderErrorCategory,
     ProviderHealth,
+    ProviderModelMetadata,
 )
 from fibi.settings import OLLAMA_MODEL
 
@@ -31,6 +32,22 @@ class OllamaLanguageProvider:
             OLLAMA_MODEL,
             "configured locally" if configured else "model name missing",
         )
+
+    def model_metadata(self) -> ProviderModelMetadata:
+        configuration = self.configuration_status()
+        return ProviderModelMetadata(
+            provider_id=self.provider_id,
+            model_id=configuration.model_id,
+            display_name=self.display_name,
+            configured=configuration.configured,
+            available=configuration.configured,
+            capabilities=("text_generation",),
+            enabled_capabilities=("text_generation",),
+            configuration_source="OLLAMA_MODEL",
+        )
+
+    def cached_health(self) -> ProviderHealth:
+        return self._last_health
 
     def health(self) -> ProviderHealth:
         try:

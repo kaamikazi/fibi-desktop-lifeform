@@ -30,6 +30,9 @@ by the Pet and Control Center.
 Provider diagnostics subscribe to manual selection changes, so safe status
 metadata reflects the current configured choice even before the next model
 request. This synchronization records IDs and configuration booleans only.
+The registry also exposes immutable `ProviderModelMetadata`; model/status views
+therefore do not receive SDK objects or enumerate remote models. Cached health
+is used for ordinary status so display code cannot cause network traffic.
 
 ## Manual Selection And Fallback
 
@@ -49,10 +52,19 @@ or credential. Provider adapters do not execute actions.
 
 ## Compatibility
 
-`ModelRouter` remains temporarily as an adapter source and mirrored status
-facade. Direct `FibiCore` construction and tests that replace `model_router`
-trigger a compatibility rebind. New production generation paths must use
-`CompanionGenerationService`; removal of the facade requires a later migration.
+`ModelRouter` remains temporarily as a deprecated forwarding facade and adapter
+source for verified legacy constructors. It has no mutable diagnostics mirror:
+all compatibility status properties are read-only projections of
+`ProviderDiagnostics`. It delegates selection and generation to the
+authoritative services and contains no fallback implementation or provider
+construction. Direct unattached callers receive a factory-built, non-persisting
+compatibility subsystem. Direct `FibiCore` tests that replace `model_router`
+still trigger a compatibility rebind.
+
+The facade may be deleted no earlier than Fibi 0.5, after production composition
+no longer exports it, direct-constructor and route compatibility tests migrate,
+the `fibi.engines.ModelRouter` public import has completed one release of
+deprecation, and downstream compatibility has been reviewed.
 
 The contract version is `0.4-experimental`. It is internal, not yet available
 to plugins, and may change before a stable provider extension API.
@@ -72,8 +84,8 @@ to plugins, and may change before a stable provider extension API.
 
 Provider behavior has small typed contracts, deterministic tests, and one
 composition-owned lifecycle. Existing clients and commands remain compatible.
-There is temporary duplication in mirrored legacy status fields until all old
-views move to `ProviderDiagnostics`.
+There is no longer duplicated mutable provider status. Temporary complexity is
+limited to the forwarding facade and test-only direct-constructor rebind.
 
 ## Testing Impact
 
@@ -83,4 +95,6 @@ diagnostics, Core delegation, and shared runtime identity. Automated tests make
 no real provider requests. Lightweight AST checks also prevent Core and UI from
 importing provider SDKs, keep adapters independent of PyQt and memory storage,
 centralize provider-service construction in the factory, and prevent adapters
-from changing manual selection.
+from changing manual selection. Additional guards prevent Core/UI adapter-field
+reads, provider construction or diagnostics mirrors in `ModelRouter`, and
+non-normalized benchmark execution.

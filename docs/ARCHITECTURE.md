@@ -88,14 +88,27 @@ enables fallback, only eligible temporary failures may use the configured
 fallback, the response says which provider answered, and the selected provider
 remains unchanged.
 
+Provider command flow is `FibiCore` command parsing -> registry/selection/
+generation/diagnostics use case -> safe text presentation. `/provider list`
+reads normalized `ProviderModelMetadata` from the registry; ordinary status
+uses cached diagnostics and never probes a network. Explicit provider tests use
+the selected provider with fallback disabled. The manual benchmark uses
+provider IDs explicitly, records no diagnostics, and cannot change persisted
+selection.
+
 The request contains prepared text and already-approved context summaries; it
 never contains API keys or service objects. `ProviderDiagnostics` retains only
 safe metadata such as IDs, model, latency, retry count, error category, and
 fallback/search flags. Prompts and responses are deliberately not retained.
 
-`ModelRouter` remains a compatibility facade while old status views and tests
-are migrated. New generation code must depend on the provider service rather
-than calling that router directly.
+`ModelRouter` is now a deprecated forwarding facade. It constructs no provider,
+implements no fallback, persists no selection, and owns no mutable diagnostics.
+Its compatibility properties project the authoritative service snapshot. The
+factory can attach a non-persisting subsystem for verified old direct callers;
+production Core and UI use the shared runtime services directly. Removal is
+eligible after the remaining direct-constructor tests and external compatibility
+window described in
+[PROVIDER_COMPATIBILITY_CLEANUP.md](architecture/PROVIDER_COMPATIBILITY_CLEANUP.md).
 
 The existing UI submission worker remains responsible for executing
 `FibiCore.respond` away from the Qt thread and suppressing stale results. The

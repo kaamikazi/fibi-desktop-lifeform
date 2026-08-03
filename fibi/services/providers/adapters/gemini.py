@@ -12,6 +12,7 @@ from fibi.services.providers.models import (
     ProviderConfigurationStatus,
     ProviderErrorCategory,
     ProviderHealth,
+    ProviderModelMetadata,
 )
 
 
@@ -41,6 +42,32 @@ class GeminiLanguageProvider:
             detail,
         )
 
+    def model_metadata(self) -> ProviderModelMetadata:
+        configuration = self.configuration_status()
+        capabilities = ("text_generation", "streaming", "search_grounding", "context_preview")
+        enabled = ["text_generation"]
+        if self.provider.config.streaming:
+            enabled.append("streaming")
+        if self.provider.config.google_search:
+            enabled.append("search_grounding")
+        if self.provider.config.context_preview:
+            enabled.append("context_preview")
+        return ProviderModelMetadata(
+            provider_id=self.provider_id,
+            model_id=configuration.model_id,
+            display_name=self.display_name,
+            configured=configuration.configured,
+            available=configuration.configured and configuration.sdk_available,
+            capabilities=capabilities,
+            enabled_capabilities=tuple(enabled),
+            configuration_source="FIBI_GEMINI_MODEL",
+            safe_options=(
+                ("thinking_level", self.provider.config.thinking_level),
+                ("streaming", "on" if self.provider.config.streaming else "off"),
+                ("search_grounding", "on" if self.provider.config.google_search else "off"),
+                ("context_preview", "on" if self.provider.config.context_preview else "off"),
+            ),
+        )
     def health(self) -> ProviderHealth:
         status = self.provider.status()
         category = (
@@ -55,6 +82,12 @@ class GeminiLanguageProvider:
             category,
             status.retry_after_seconds,
         )
+
+    def cached_health(self) -> ProviderHealth:
+        return self.health()
+
+    def reset_health(self) -> bool:
+        return self.provider.reset_transient_health()
 
     def generate(self, request: GenerationRequest) -> GenerationResult:
         if request.purpose == "provider_test":

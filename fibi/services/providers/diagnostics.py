@@ -21,6 +21,8 @@ class ProviderDiagnostics:
         selected_configured: bool,
         fallback_enabled: bool,
         fallback_provider_id: str,
+        health_state: str = "unknown",
+        retry_after_seconds: int = 0,
     ) -> ProviderDiagnosticsSnapshot:
         snapshot = ProviderDiagnosticsSnapshot(
             selected_provider_id=result.selected_provider_id,
@@ -30,7 +32,11 @@ class ProviderDiagnostics:
             last_model_id=result.model_id,
             last_success=result.success,
             last_error_category=result.error_category.value if result.error_category else "",
+            health_state=health_state,
+            retry_after_seconds=max(0, int(retry_after_seconds)),
             last_latency_ms=result.latency_ms,
+            last_generation_latency_ms=max(0.0, result.latency_ms - result.fallback_latency_ms),
+            last_fallback_latency_ms=result.fallback_latency_ms,
             retry_count=result.retry_count,
             fallback_enabled=fallback_enabled,
             fallback_provider_id=fallback_provider_id,
@@ -42,12 +48,23 @@ class ProviderDiagnostics:
             self._snapshot = snapshot
         return snapshot
 
-    def selection_changed(self, provider_id: str, configured: bool) -> None:
+    def selection_changed(self, provider_id: str, configured: bool, health_state: str = "unknown") -> None:
         with self._lock:
             self._snapshot = replace(
                 self._snapshot,
                 selected_provider_id=provider_id,
                 selected_provider_configured=configured,
+                health_state=health_state,
+                retry_after_seconds=0,
+                timestamp=datetime.now().astimezone().isoformat(timespec="seconds"),
+            )
+
+    def fallback_changed(self, enabled: bool, provider_id: str) -> None:
+        with self._lock:
+            self._snapshot = replace(
+                self._snapshot,
+                fallback_enabled=bool(enabled),
+                fallback_provider_id=provider_id if enabled else "",
                 timestamp=datetime.now().astimezone().isoformat(timespec="seconds"),
             )
 

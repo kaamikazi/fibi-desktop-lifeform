@@ -194,8 +194,6 @@ def build_services(configuration: RuntimeConfiguration) -> ApplicationServices:
     nvidia_model = NvidiaModelEngine()
     model_router = ModelRouter(model, nvidia_model)
     app_settings = AppSettingsEngine()
-    model_router.set_mode(app_settings.settings.language_provider or "ollama")
-    model_router.set_automatic_fallback(app_settings.settings.automatic_provider_fallback)
     provider_subsystem = build_provider_subsystem(model_router, app_settings)
     app_index = AppIndexEngine()
     secret_sanitizer = SecretSanitizer()

@@ -262,7 +262,7 @@ def test_one_attempt_visible_ollama_fallback() -> None:
     assert ollama.calls == 1
     assert result.provider_used == "ollama"
     assert result.fallback_used
-    assert "used Ollama" in result.reply_text
+    assert "Ollama" in result.reply_text
 
 
 def test_disabled_fallback_never_calls_ollama() -> None:

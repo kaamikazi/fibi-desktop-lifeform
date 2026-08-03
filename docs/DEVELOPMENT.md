@@ -59,6 +59,18 @@ change provider selection, invoke desktop actions, or define Fibi's identity.
 Use deterministic test doubles for provider tests; real Gemini and Ollama calls
 are forbidden in the automated suite.
 
+Provider status and UI code must use `ProviderRegistry` model metadata,
+`ProviderSelectionService`, and `ProviderDiagnostics`. Status views must not
+call `LanguageProvider.health()` because that may perform I/O; use the
+registry's cached health snapshot. Provider comparisons must call
+`CompanionGenerationService.benchmark`, which disables fallback, does not
+record conversation diagnostics, and leaves persisted selection unchanged.
+
+`ModelRouter` is compatibility-only. Do not add callers, fields, provider
+construction, fallback branches, persistence, model discovery, or diagnostics
+state to it. New tests should exercise normalized provider contracts unless
+they specifically verify the documented facade behavior.
+
 Manual selection and explicit fallback are separate settings. A failed request
 must not mutate selection. New fallback categories require an ADR and tests for
 privacy, visibility, and deterministic routing.

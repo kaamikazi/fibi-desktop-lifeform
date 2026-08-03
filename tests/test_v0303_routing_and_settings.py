@@ -126,6 +126,18 @@ def test_provider_selection_persists_without_storing_secret(tmp_path: Path) -> N
     assert "api_key" not in core.app_settings.settings_path.read_text(encoding="utf-8").lower()
 
 
+def test_settings_selection_is_reflected_in_command_status(
+    tmp_path: Path,
+    qt_app: QApplication,
+) -> None:
+    core, _, _ = make_core(tmp_path / "settings-provider-sync", [], [])
+    dialog = FibiSettingsDialog(core)
+    dialog.provider_combo.setCurrentIndex(dialog.provider_combo.findData("gemini"))
+    dialog._save()
+
+    assert "Selected: gemini" in core.respond("/provider status").display_text
+
+
 def test_visible_gemini_fallback_updates_active_provider_status(tmp_path: Path) -> None:
     core, _, _ = make_core(tmp_path / "fallback-status", [], [])
     api = FakeModelsAPI(error=TimeoutError("timed out"))
