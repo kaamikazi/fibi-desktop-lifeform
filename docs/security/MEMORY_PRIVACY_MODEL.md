@@ -132,6 +132,12 @@ The backup contains private data and must be excluded from Git, release output,
 support bundles, and ordinary diagnostics. Restore must be rehearsed before
 write cutover.
 
+The explicit backup foundation uses SQLite's online backup API, a strict
+content-free manifest, private-output confirmation, and isolated restore
+rehearsal. Derived indexes are omitted. Bundles remain private independent
+copies and are never uploaded, auto-pruned, restored over live data, or created
+during startup. See [Backup Privacy Model](BACKUP_PRIVACY_MODEL.md).
+
 ## Deletion Guarantee
 
 The target delete transaction marks the authoritative record deleted and writes

@@ -172,15 +172,24 @@ privacy policy, and non-destructive migration stages are documented in:
 - [Memory shadow comparison](architecture/MEMORY_SHADOW_COMPARISON.md)
 - [Memory Stage 2 comparison](architecture/MEMORY_STAGE_2_COMPARISON.md)
 - [Memory Stage 2 findings](architecture/MEMORY_STAGE_2_FINDINGS.md)
+- [Memory backup architecture](architecture/MEMORY_BACKUP_ARCHITECTURE.md)
+- [Memory restore rehearsal](architecture/MEMORY_RESTORE_REHEARSAL.md)
 - [Memory privacy model](security/MEMORY_PRIVACY_MODEL.md)
+- [Backup privacy model](security/BACKUP_PRIVACY_MODEL.md)
 - [ADR 0009](decisions/0009-authoritative-user-controlled-memory.md)
 - [ADR 0010](decisions/0010-read-only-memory-query-boundary.md)
 - [ADR 0011](decisions/0011-content-free-memory-comparison.md)
+- [ADR 0012](decisions/0012-memory-backup-and-restore-rehearsal.md)
 
 The future Context Broker remains the intended route from approved memory to a
 generation request. Stage 1 includes only a disconnected preview; it is not a
 production authority and sends no context to a provider. Do not add new memory
 writers while the staged migration is pending.
+
+Backup creation, verification, and restore rehearsal are available only through
+the explicit `fibi.tools.memory_backup` CLI. They are not runtime-owned and do
+not change memory reads, writes, provider context, Pet, or Control Center. Live
+restore and Stage 3 import remain unavailable.
 
 ## Migration Strategy
 

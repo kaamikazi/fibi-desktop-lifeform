@@ -64,8 +64,8 @@ def is_portable_mode() -> bool:
     return is_packaged() and portable_marker_path().exists()
 
 
-def user_data_dir() -> Path:
-    """Return Fibi's writable user-data directory and create it if needed."""
+def resolved_user_data_dir() -> Path:
+    """Resolve Fibi's user-data directory without creating or reading files."""
 
     configured = os.getenv("FIBI_DATA_DIR", "").strip()
     if configured:
@@ -80,6 +80,14 @@ def user_data_dir() -> Path:
         path = (Path(appdata) if appdata else Path.home() / "AppData" / "Roaming") / APP_DIR_NAME
     else:
         path = project_root() / "data"
+
+    return path.resolve(strict=False)
+
+
+def user_data_dir() -> Path:
+    """Return Fibi's writable user-data directory and create it if needed."""
+
+    path = resolved_user_data_dir()
 
     path.mkdir(parents=True, exist_ok=True)
     ensure_default_settings(path)

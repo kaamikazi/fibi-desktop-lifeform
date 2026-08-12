@@ -107,7 +107,8 @@ counters, timestamps, and file inventory remain unchanged.
 
 ## Stage 3: Controlled Import
 
-**Entry:** Backup and restore rehearsal passed; importer has dry-run, conflict
+**Entry:** The explicit backup and restore-rehearsal subsystem has passed on
+synthetic SQLite stores. Stage 3 remains blocked until an importer has dry-run, conflict
 report, transaction, fault injection, and rollback tests; user explicitly
 confirms the migration.
 
@@ -225,7 +226,8 @@ browser content, raw logs, or provider responses.
 
 ## Exact Next Phase
 
-Keep Stage 3 blocked. The next product task is a separately reviewed backup and
-restore subsystem with SQLite backup API coverage, manifest verification,
-restore rehearsal, fault injection, private-output policy, and no importer.
-Do not import, rewrite, merge, approve, delete, or retire records.
+Keep Stage 3 blocked. The exact next milestone is a design-only and
+synthetic-test specification for a transactional, idempotent importer with
+source mappings, conflict review, consent normalization, coordinated deletion,
+fault-injected rollback, and migration validation. It requires separate
+approval before any importer implementation or real-data execution.

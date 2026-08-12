@@ -120,6 +120,64 @@ def scan_memory_boundaries(project_root: Path) -> list[BoundaryViolation]:
                 comparison_forbidden_calls,
             )
         )
+    backup_files = tuple((root / "fibi" / "memory_backup").glob("*.py")) + (
+        root / "fibi" / "tools" / "memory_backup.py",
+    )
+    backup_forbidden_imports = (
+        "fibi.providers",
+        "fibi.services.providers",
+        "fibi.ui",
+        "fibi.engines.memory_engine",
+        "fibi.engines.memory_care_engine",
+        "fibi.rag.repository",
+        "requests",
+        "httpx",
+        "socket",
+        "urllib",
+    )
+    for path in backup_files:
+        violations.extend(
+            _forbidden_imports(
+                root,
+                path,
+                "memory_backup_dependency",
+                backup_forbidden_imports,
+            )
+        )
+        violations.extend(
+            _forbidden_method_calls(
+                root,
+                path,
+                "memory_backup_record_mutation",
+                comparison_forbidden_calls,
+            )
+        )
+        violations.extend(
+            _forbidden_string_literals(
+                root,
+                path,
+                "memory_backup_forbidden_capability",
+                (".env", "restore --live", "restore-current-database", "cloud-upload"),
+            )
+        )
+    for path in provider_files:
+        violations.extend(
+            _forbidden_imports(
+                root,
+                path,
+                "provider_backup_access",
+                ("fibi.memory_backup",),
+            )
+        )
+    for path in root.glob("fibi/ui/*.py"):
+        violations.extend(
+            _forbidden_imports(
+                root,
+                path,
+                "ui_raw_backup_adapter_access",
+                ("fibi.memory_backup.sqlite_snapshot", "fibi.memory_backup.verifier"),
+            )
+        )
     violations.extend(_query_service_construction_violations(root))
     runtime_files = [
         root / "fibi" / "main.py",
@@ -152,6 +210,37 @@ def scan_memory_boundaries(project_root: Path) -> list[BoundaryViolation]:
                 ("MemoryComparisonService", "MemoryShadowComparison"),
             )
         )
+        violations.extend(
+            _forbidden_imports(
+                root,
+                path,
+                "memory_backup_default_runtime",
+                ("fibi.memory_backup",),
+            )
+        )
+        violations.extend(
+            _forbidden_named_constructions(
+                root,
+                path,
+                "memory_backup_default_runtime",
+                ("MemoryBackupService", "RestoreRehearsalService", "BackupVerifier"),
+            )
+        )
+    importer_paths = (
+        root / "fibi" / "memory" / "importer.py",
+        root / "fibi" / "memory" / "migration_importer.py",
+        root / "fibi" / "memory_backup" / "importer.py",
+    )
+    for path in importer_paths:
+        if path.exists():
+            violations.append(
+                BoundaryViolation(
+                    "memory_stage3_importer_forbidden",
+                    _relative(root, path),
+                    1,
+                    path.name,
+                )
+            )
     return violations
 
 
@@ -235,6 +324,29 @@ def _forbidden_named_constructions(
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
         and node.func.id in forbidden
+    ]
+
+
+def _forbidden_string_literals(
+    root: Path,
+    path: Path,
+    rule: str,
+    forbidden_values: tuple[str, ...],
+) -> list[BoundaryViolation]:
+    if not path.exists():
+        return []
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    except (OSError, SyntaxError) as error:
+        return [BoundaryViolation("source_parse", _relative(root, path), 0, type(error).__name__)]
+    forbidden = tuple(value.casefold() for value in forbidden_values)
+    return [
+        BoundaryViolation(rule, _relative(root, path), node.lineno, value)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        for value in forbidden
+        if value in node.value.casefold()
     ]
 
 

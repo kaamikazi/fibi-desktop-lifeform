@@ -65,3 +65,11 @@ are separately approved:
 A future local-data report must be private, ignored, aggregate-only, and created
 only after explicit read and save confirmations. It must never be committed
 automatically.
+
+## Backup Foundation Update
+
+ADR 0012 now provides explicit SQLite backup, strict manifest verification, and
+isolated restore rehearsal, proven only with fictional temporary databases.
+This satisfies the first entry-criteria item at the subsystem level. No real
+user backup or local-data comparison was run, and every remaining Stage 3 item
+above still requires separate implementation, evidence, and approval.

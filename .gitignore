@@ -44,6 +44,14 @@ temp_audio/
 *.index
 *.pth
 
+# Private memory backup and restore-rehearsal bundles
+private_memory_backups/
+fibi-memory-backup-*/
+.fibi-memory-backup-staging-*/
+fibi-restore-rehearsal-*/
+.fibi-restore-rehearsal-staging-*/
+rehearsal_evidence.json
+
 # Voice/model artifacts
 voice_models/
 

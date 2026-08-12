@@ -151,9 +151,28 @@ decision. See [Stage 2 comparison](architecture/MEMORY_STAGE_2_COMPARISON.md),
 [findings](architecture/MEMORY_STAGE_2_FINDINGS.md), and
 [ADR 0011](decisions/0011-content-free-memory-comparison.md).
 
-Before a future write migration can ship, it needs a verified SQLite backup,
-restore rehearsal, one transaction, source mapping, duplicate/conflict report,
-fault-injected rollback tests, sanitized diagnostics, and explicit confirmation.
+The backup foundation is explicit and private-output gated:
+
+```powershell
+python -m fibi.tools.memory_backup create --output <private-directory> --confirm-private-output
+python -m fibi.tools.memory_backup verify <backup-bundle>
+python -m fibi.tools.memory_backup rehearse-restore <backup-bundle> --confirm-private-output
+```
+
+Tests must construct synthetic SQLite databases beneath `tmp_path`; never run
+these commands against a developer's real data. The subsystem must use
+SQLite's backup API, verify untrusted manifests, omit derived indexes from
+validity, and reject active/repository/bundle rehearsal destinations. There is
+no live restore, automatic backup, retention, cloud transfer, or importer. See
+[backup architecture](architecture/MEMORY_BACKUP_ARCHITECTURE.md),
+[operations](operations/MEMORY_BACKUP_RECOVERY.md), and
+[ADR 0012](decisions/0012-memory-backup-and-restore-rehearsal.md).
+
+Before a future write migration can ship, it still needs one importer
+transaction, source mapping, duplicate/conflict review, import-specific
+fault-injected rollback tests, sanitized private evidence, coordinated deletion,
+consent normalization, and explicit approval. Backup and restore rehearsal alone
+do not authorize Stage 3.
 
 Top-level dependencies are wired only in `fibi/app/composition.py`. Add a
 minimal protocol in `fibi/app/contracts.py` when a consumer needs a replaceable

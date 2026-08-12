@@ -43,6 +43,16 @@ are retired in stages.
   synthetic developer tool.
 - Comparison reports expose aggregate fields only; matching keys and record
   references remain ephemeral and are never serialized.
+- Backup and restore-rehearsal services are explicit only. Providers cannot
+  import them; UI cannot import raw SQLite backup or verifier adapters.
+- Backup code cannot call memory mutation or index-rebuild APIs, access
+  environment files, use network clients, upload data, or implement an importer.
+- Normal startup, runtime, Core, Pet, Control Center, and generation cannot
+  import or construct backup/rehearsal services.
+- Restore rehearsal must reject the active data root, its parent/children, the
+  backup bundle, and the repository. No live-restore command exists.
+- Manifests use safe logical/relative paths and contain no raw absolute path or
+  record payload.
 
 `python tools/check_memory_boundaries.py` runs lightweight AST checks for the
 enforceable import, construction, and mutation-call rules. Behavioral tests
@@ -76,6 +86,8 @@ ADR; it must consume approved interfaces rather than own user memory.
 ## Persistence Rules
 
 - Runtime data stays under the configured data root and out of Git/releases.
+- Private backup and rehearsal bundles stay ignored, local, explicit, and out
+  of support bundles. Existing bundles are never silently overwritten/deleted.
 - Schema changes are versioned, transactional, backup-aware, and reversible.
 - Read-only diagnostics do not initialize missing stores or produce reports.
 - Derived data is versioned and rebuildable from its authority.
