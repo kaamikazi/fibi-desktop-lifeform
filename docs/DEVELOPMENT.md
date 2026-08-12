@@ -30,6 +30,7 @@ python app.py --gui-smoke
 python tools/verify_release.py --release-dir "dist/Fibi Chubi"
 python tools/check_memory_boundaries.py
 python tests/smoke_memory_stage1.py
+python tests/smoke_memory_stage2.py
 ```
 
 Tests must mock provider calls and destructive/visible desktop actions. Unit
@@ -135,6 +136,20 @@ python tools/run_memory_shadow_fixture.py
 ```
 
 Do not enable it at startup or point it at real user data.
+
+Stage 2 comparison is explicit and synthetic-only:
+
+```powershell
+python -m fibi.tools.memory_compare --synthetic --no-save
+```
+
+The report goes to stdout and contains aggregates only. Local-data mode refuses
+execution even with confirmation because complete live-store byte stability is
+not yet guaranteed. Do not add a runtime hook, environment-triggered startup
+path, report store, provider call, stable fingerprint, or automatic migration
+decision. See [Stage 2 comparison](architecture/MEMORY_STAGE_2_COMPARISON.md),
+[findings](architecture/MEMORY_STAGE_2_FINDINGS.md), and
+[ADR 0011](decisions/0011-content-free-memory-comparison.md).
 
 Before a future write migration can ship, it needs a verified SQLite backup,
 restore rehearsal, one transaction, source mapping, duplicate/conflict report,

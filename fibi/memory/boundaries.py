@@ -74,8 +74,59 @@ def scan_memory_boundaries(project_root: Path) -> list[BoundaryViolation]:
             ),
         )
     )
+    comparison_files = (
+        root / "fibi" / "memory" / "comparison_models.py",
+        root / "fibi" / "memory" / "comparison_dataset.py",
+        root / "fibi" / "memory" / "shadow_comparison.py",
+        root / "fibi" / "tools" / "memory_compare.py",
+    )
+    comparison_forbidden_imports = (
+        "fibi.providers",
+        "fibi.services.providers",
+        "fibi.ui",
+        "fibi.engines.life_engine",
+        "fibi.engines.relationship_engine",
+        "fibi.engines.permission_engine",
+        "sqlite3",
+    )
+    comparison_forbidden_calls = (
+        "add_memory",
+        "update_memory",
+        "delete_memory",
+        "approve",
+        "remember_fact",
+        "save",
+        "ingest_file",
+        "mark_accessed",
+        "soft_delete",
+        "rebuild",
+        "rebuild_index",
+        "expire_memories",
+    )
+    for path in comparison_files:
+        violations.extend(
+            _forbidden_imports(
+                root,
+                path,
+                "memory_comparison_dependency",
+                comparison_forbidden_imports,
+            )
+        )
+        violations.extend(
+            _forbidden_method_calls(
+                root,
+                path,
+                "memory_comparison_mutation",
+                comparison_forbidden_calls,
+            )
+        )
     violations.extend(_query_service_construction_violations(root))
-    runtime_files = [root / "fibi" / "app" / "composition.py", root / "fibi" / "engines" / "core.py"]
+    runtime_files = [
+        root / "fibi" / "main.py",
+        root / "fibi" / "app" / "composition.py",
+        root / "fibi" / "app" / "runtime.py",
+        root / "fibi" / "engines" / "core.py",
+    ]
     for path in runtime_files:
         violations.extend(
             _forbidden_imports(
@@ -83,6 +134,22 @@ def scan_memory_boundaries(project_root: Path) -> list[BoundaryViolation]:
                 path,
                 "experimental_cognitive_runtime",
                 ("sovereign_brain", "interpreter_brain", "autobiographical_cognition", "cognitive_architecture"),
+            )
+        )
+        violations.extend(
+            _forbidden_imports(
+                root,
+                path,
+                "memory_comparison_default_runtime",
+                ("fibi.memory.shadow_comparison", "fibi.memory.comparison_dataset"),
+            )
+        )
+        violations.extend(
+            _forbidden_named_constructions(
+                root,
+                path,
+                "memory_comparison_default_runtime",
+                ("MemoryComparisonService", "MemoryShadowComparison"),
             )
         )
     return violations
@@ -115,25 +182,29 @@ def _forbidden_method_calls(
 def _query_service_construction_violations(root: Path) -> list[BoundaryViolation]:
     """Keep production Stage 1 object ownership in the composition root."""
 
-    allowed = (root / "fibi" / "app" / "composition.py").resolve()
-    constructed_types = {
-        "CompositeMemoryQueryService",
-        "LegacyMemoryReadAdapter",
-        "RAGMemoryReadAdapter",
-        "MemoryShadowComparison",
-        "ContextBrokerPreview",
+    composition = (root / "fibi" / "app" / "composition.py").resolve()
+    synthetic = (root / "fibi" / "memory" / "comparison_dataset.py").resolve()
+    allowed_by_type = {
+        "CompositeMemoryQueryService": {composition, synthetic},
+        "LegacyMemoryReadAdapter": {composition},
+        "RAGMemoryReadAdapter": {composition},
+        "ContextBrokerPreview": {composition},
+        "MemoryComparisonService": {synthetic},
     }
     violations: list[BoundaryViolation] = []
     for path in (root / "fibi").rglob("*.py"):
-        if path.resolve() == allowed:
-            continue
         try:
             tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
         except (OSError, SyntaxError) as error:
             violations.append(BoundaryViolation("source_parse", _relative(root, path), 0, type(error).__name__))
             continue
         for node in ast.walk(tree):
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in constructed_types:
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id in allowed_by_type
+                and path.resolve() not in allowed_by_type[node.func.id]
+            ):
                 violations.append(
                     BoundaryViolation(
                         "memory_query_owner",
@@ -143,6 +214,28 @@ def _query_service_construction_violations(root: Path) -> list[BoundaryViolation
                     )
                 )
     return violations
+
+
+def _forbidden_named_constructions(
+    root: Path,
+    path: Path,
+    rule: str,
+    names: tuple[str, ...],
+) -> list[BoundaryViolation]:
+    if not path.exists():
+        return []
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    except (OSError, SyntaxError) as error:
+        return [BoundaryViolation("source_parse", _relative(root, path), 0, type(error).__name__)]
+    forbidden = set(names)
+    return [
+        BoundaryViolation(rule, _relative(root, path), node.lineno, node.func.id)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in forbidden
+    ]
 
 
 def _forbidden_imports(

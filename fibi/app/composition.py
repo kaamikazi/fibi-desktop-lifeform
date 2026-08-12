@@ -91,7 +91,6 @@ class ApplicationServices:
     project_workspace: ProjectService
     project_edit_planner: Any
     memory_query: MemoryQueryService | None = field(default=None, init=False)
-    memory_shadow_comparison: Any = field(default=None, init=False)
     context_broker_preview: Any = field(default=None, init=False)
     _partial_stopped: bool = False
 
@@ -106,7 +105,6 @@ class ApplicationServices:
             not in {
                 "tts_manager",
                 "memory_query",
-                "memory_shadow_comparison",
                 "context_broker_preview",
             }
         }
@@ -311,7 +309,6 @@ def _attach_memory_read_boundary(services: ApplicationServices, core: FibiCore) 
     from fibi.memory.query_service import CompositeMemoryQueryService
     from fibi.memory.read_adapters import LegacyMemoryReadAdapter, RAGMemoryReadAdapter
     from fibi.memory.read_policy import MemoryReadPolicy
-    from fibi.memory.shadow_comparison import MemoryShadowComparison, MemoryShadowSettings
 
     if services.memory_query is not None:
         return
@@ -325,9 +322,4 @@ def _attach_memory_read_boundary(services: ApplicationServices, core: FibiCore) 
     rag_adapter = RAGMemoryReadAdapter(rag_service, policy)
     query_service = CompositeMemoryQueryService((legacy_adapter, rag_adapter))
     services.memory_query = query_service
-    services.memory_shadow_comparison = MemoryShadowComparison(
-        query_service.source_adapters,
-        query_service,
-        MemoryShadowSettings(enabled=False),
-    )
     services.context_broker_preview = ContextBrokerPreview(sanitizer, enabled=False)

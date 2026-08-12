@@ -1,0 +1,127 @@
+{
+  "schema_version": "fibi.memory-comparison.dataset.v1",
+  "dataset_version": "stage2-synthetic-2026-08",
+  "cases": [
+    {
+      "id": "exact_fact_both",
+      "query": "What color does Nova prefer?",
+      "legacy": {"records": [{"id": "l1", "category": "fact", "content": "Nova prefers teal notebooks.", "score": 0.95}]},
+      "rag": {"records": [{"id": "r1", "category": "fact", "content": "Nova prefers teal notebooks.", "score": 0.97}]}
+    },
+    {
+      "id": "preference_different_wording",
+      "query": "When does Nova drink mint tea?",
+      "legacy": {"records": [{"id": "l2", "category": "preference", "content": "Nova prefers mint tea in the evening.", "score": 0.88}]},
+      "rag": {"records": [{"id": "r2", "category": "preference", "content": "In the evening Nova prefers mint tea.", "score": 0.9}]}
+    },
+    {
+      "id": "legacy_only_project",
+      "query": "What is Project Paper Kite?",
+      "legacy": {"records": [{"id": "l3", "category": "project", "content": "Project Paper Kite is a fictional weather display.", "score": 0.91}]},
+      "rag": {"records": []}
+    },
+    {
+      "id": "rag_only_summary",
+      "query": "Summarize the lantern discussion.",
+      "legacy": {"records": []},
+      "rag": {"records": [{"id": "r4", "category": "summary", "content": "The fictional lantern discussion selected a blue casing.", "score": 0.93}]}
+    },
+    {
+      "id": "contradicted_fact",
+      "query": "Which desk does Rowan use?",
+      "legacy": {"records": [{"id": "l5", "category": "fact", "content": "Rowan uses the north desk.", "score": 0.82, "updated_at": "2025-01-01T00:00:00Z", "contradiction_group": "rowan-desk"}]},
+      "rag": {"records": [{"id": "r5", "category": "fact", "content": "Rowan now uses the south desk.", "score": 0.94, "updated_at": "2026-01-01T00:00:00Z", "contradiction_group": "rowan-desk"}]}
+    },
+    {
+      "id": "duplicate_paraphrases",
+      "query": "What snack does Luma like?",
+      "legacy": {"records": [{"id": "l6", "category": "preference", "content": "Luma likes cinnamon toast after lunch.", "score": 0.86}]},
+      "rag": {"records": [{"id": "r6", "category": "preference", "content": "After lunch Luma likes cinnamon toast.", "score": 0.87}]}
+    },
+    {
+      "id": "deleted_memory",
+      "query": "Find the deleted fictional note.",
+      "legacy": {"records": [], "exclusions": {"observation_complete": true, "deleted": 1}},
+      "rag": {"records": [], "exclusions": {"observation_complete": true, "deleted": 1}}
+    },
+    {
+      "id": "expired_temporary_memory",
+      "query": "Find the expired fictional context.",
+      "legacy": {"records": [], "exclusions": {"observation_complete": true, "expired": 1}},
+      "rag": {"records": [], "exclusions": {"observation_complete": true, "expired": 1}}
+    },
+    {
+      "id": "revoked_memory",
+      "query": "Find the revoked fictional preference.",
+      "legacy": {"records": [], "exclusions": {"observation_complete": true, "revoked": 1}},
+      "rag": {"records": [], "exclusions": {"observation_complete": true, "revoked": 1}}
+    },
+    {
+      "id": "approved_sensitive_memory",
+      "query": "Recall the approved sensitive fictional note.",
+      "legacy": {"records": [{"id": "l10", "category": "fact", "content": "Aster explicitly approved a sensitive fictional note.", "consent": "approved", "sensitivity": "sensitive", "score": 0.8}]},
+      "rag": {"records": [{"id": "r10", "category": "fact", "content": "Aster explicitly approved a sensitive fictional note.", "consent": "approved", "sensitivity": "sensitive", "score": 0.81}]}
+    },
+    {
+      "id": "unapproved_sensitive_memory",
+      "query": "Find the unapproved sensitive fictional note.",
+      "legacy": {"records": [], "exclusions": {"observation_complete": true, "sensitive": 1}},
+      "rag": {"records": [], "exclusions": {"observation_complete": true, "sensitive": 1}}
+    },
+    {
+      "id": "secret_bearing_memory",
+      "query": "Find the synthetic secret marker.",
+      "legacy": {"records": [], "exclusions": {"observation_complete": true, "prohibited": 1, "secret_bearing": 1}},
+      "rag": {"records": [], "exclusions": {"observation_complete": true, "prohibited": 1, "secret_bearing": 1}}
+    },
+    {
+      "id": "unknown_legacy_category",
+      "query": "Find the old-style fictional record.",
+      "legacy": {"records": [{"id": "l13", "category": "unknown_legacy", "content": "An old fictional category survived normalization.", "score": 0.72, "consent": null, "sensitivity": null}]},
+      "rag": {"records": []}
+    },
+    {
+      "id": "equal_score_ordering",
+      "query": "Order the equal-score fictional facts.",
+      "legacy": {"records": [{"id": "1", "category": "fact", "content": "Equal score fact alpha.", "score": 0.7}, {"id": "2", "category": "fact", "content": "Equal score fact beta.", "score": 0.7}]},
+      "rag": {"records": [{"id": "1", "category": "fact", "content": "Equal score fact gamma.", "score": 0.7}, {"id": "2", "category": "fact", "content": "Equal score fact delta.", "score": 0.7}]}
+    },
+    {
+      "id": "numpy_fallback",
+      "query": "Find the NumPy fallback fictional fact.",
+      "legacy": {"records": []},
+      "rag": {"records": [{"id": "r15", "category": "fact", "content": "NumPy fallback returned a fictional fact.", "score": 0.84}], "health": {"semantic_index_available": true, "semantic_acceleration_available": false, "semantic_backend": "numpy"}}
+    },
+    {
+      "id": "semantic_unavailable",
+      "query": "Find the lexical-only fictional fact.",
+      "legacy": {"records": [{"id": "l16", "category": "fact", "content": "Lexical retrieval returned a fictional fact.", "score": 0.75}], "health": {"semantic_index_available": false, "semantic_acceleration_available": false, "semantic_backend": "none"}, "failures": ["semantic_unavailable"]},
+      "rag": {"records": [{"id": "r16", "category": "fact", "content": "Lexical retrieval returned a fictional fact.", "score": 0.76}], "health": {"semantic_index_available": false, "semantic_acceleration_available": false, "semantic_backend": "none"}, "failures": ["semantic_unavailable"]}
+    },
+    {
+      "id": "one_source_unavailable",
+      "query": "Find a fictional record with one source offline.",
+      "legacy": {"records": [{"id": "l17", "category": "fact", "content": "Legacy retained the fictional offline-source fact.", "score": 0.79}]},
+      "rag": {"records": [], "health": {"available": false}, "failures": ["storage_missing"]}
+    },
+    {
+      "id": "source_timeout",
+      "query": "Find the deliberately slow fictional record.",
+      "timeout_seconds": 0.01,
+      "legacy": {"records": [{"id": "l18", "category": "fact", "content": "The fictional source answered too slowly.", "score": 0.8}], "delay_ms": 50},
+      "rag": {"records": []}
+    },
+    {
+      "id": "irrelevant_candidate",
+      "query": "Which fictional color does Mira prefer?",
+      "legacy": {"records": [{"id": "l19a", "category": "preference", "content": "Mira prefers violet folders.", "score": 0.9}, {"id": "l19b", "category": "fact", "content": "A fictional bridge has seven lamps.", "score": 0.3, "relevant": false}]},
+      "rag": {"records": [{"id": "r19", "category": "preference", "content": "Mira prefers violet folders.", "score": 0.92}]}
+    },
+    {
+      "id": "empty_result_set",
+      "query": "Find a nonexistent fictional memory.",
+      "legacy": {"records": []},
+      "rag": {"records": []}
+    }
+  ]
+}

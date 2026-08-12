@@ -114,6 +114,12 @@ Tracebacks must be reviewed at boundaries because SDK or filesystem exceptions
 can contain paths or request snippets. Support bundles and crash reports remain
 local, explicit, sanitized, and user-reviewed before sharing.
 
+Stage 2 memory comparison uses a random per-call HMAC key for exact matching.
+The key, content, fingerprints, source record IDs, and raw query never enter the
+report. Reports contain aggregate counts and normalized error categories only
+and are not persisted automatically. The committed dataset is fictional and
+privacy-scanned. Local-data comparison remains unimplemented.
+
 ## Exports And Backups
 
 Exports are user-initiated and default to approved normal active records.

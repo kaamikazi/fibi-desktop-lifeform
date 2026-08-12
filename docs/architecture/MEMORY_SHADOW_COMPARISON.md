@@ -1,6 +1,7 @@
 # Memory Shadow Comparison
 
-Status: development-only and disabled by default.
+Status: Stage 1 compatibility facade; superseded for new diagnostics by the
+[Stage 2 comparison](MEMORY_STAGE_2_COMPARISON.md).
 
 `MemoryShadowComparison` characterizes the legacy adapter, RAG adapter, and
 normalized query result without changing production retrieval. It executes
@@ -14,15 +15,15 @@ duplicate count, missing-consent count, ranking agreement, failure-category
 counts, and elapsed milliseconds. It contains no query, memory text, prompt,
 provider response, private path, or database row.
 
-Normal runtime composition creates the object with `enabled=False` and never
-calls `compare`. Automated tests use synthetic records only. A developer may
-run the explicit synthetic fixture:
+Normal runtime composition no longer imports or constructs this object.
+Automated tests use synthetic records only. The compatibility command delegates
+to the Stage 2 suite:
 
 ```powershell
 python tools/run_memory_shadow_fixture.py
 ```
 
-The tool does not open Fibi's data directory and prints metrics only. There is
+The tool does not open Fibi's data directory and prints aggregate JSON only. There is
 no production command, startup hook, background worker, environment-only
 toggle, provider call, memory write, or report file.
 
@@ -35,6 +36,6 @@ contradictions, or feed provider context.
 
 ## Removal
 
-Remove the `memory_shadow_comparison` composition field and
-`fibi/memory/shadow_comparison.py`. Because the comparison writes nothing and
-is off by default, removal needs no data migration.
+Remove the compatibility classes after all Stage 1 callers are retired. The
+Stage 2 service shares this module to avoid a parallel comparison framework.
+Removal needs no data migration.

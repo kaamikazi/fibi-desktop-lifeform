@@ -1,6 +1,6 @@
 # Memory Migration Plan
 
-Status: Stage 1 read boundary implemented. Real data migration remains blocked.
+Status: Stage 2 synthetic comparison implemented. Real data migration remains blocked.
 
 ## Safety Principles
 
@@ -83,26 +83,27 @@ rollback is needed.
 
 **Entry:** Stage 1 contracts stable; synthetic quality suite passes.
 
-**Work:** Execute current and proposed retrieval for the same local query. Record
-only run ID, source IDs/checksums, category, ranks, exclusion reasons, latency,
-and mismatch class. Never record memory text in diagnostics.
+**Work:** Explicitly execute query-only source and normalized retrieval over a
+fictional 20-case dataset. Match exact content with ephemeral salted HMACs and
+record aggregate distributions, overlap, ranking, exclusions, metadata gaps,
+latency, and normalized errors. Never record memory text in diagnostics.
 
-**Exit:** Recall, precision, false-positive, contradiction, sensitive exclusion,
-and latency gates pass over a representative synthetic and maintainer-approved
-local evaluation set.
+**Exit:** Synthetic overlap, retention, contradiction, irrelevant retrieval,
+sensitive/lifecycle exclusion, unavailable-index, source failure, timeout, and
+byte-stability tests pass. Local-data evidence is still absent.
 
 **Tests:** Exact fact, preference, project, contradiction, duplicate, irrelevant,
 sensitive, deleted, no-index, and provider replacement cases.
 
-**Validation:** Same approved logical context IDs reach Gemini and Ollama test
-doubles. Manual review explains all mismatches.
+**Validation:** No comparison is constructed during normal runtime; no provider
+receives comparison context; temporary databases, indexes, manifests, access
+counters, timestamps, and file inventory remain unchanged.
 
 **Rollback:** Turn off comparison. Existing path remains authoritative.
 
 **User impact:** None.
 
-**Failure:** Do not progress; retain mismatch diagnostics within bounded local
-retention.
+**Failure:** Do not progress. Reports are not persisted by default.
 
 ## Stage 3: Controlled Import
 
@@ -224,7 +225,7 @@ browser content, raw logs, or provider responses.
 
 ## Exact Next Phase
 
-Keep Stage 2 blocked until Stage 1 passes a maintained synthetic quality gate
-and the project separately approves production dual-read comparison. The next
-approved work would design content-free mismatch sampling and explicit local
-opt-in; it must not import, rewrite, merge, or retire records.
+Keep Stage 3 blocked. The next product task is a separately reviewed backup and
+restore subsystem with SQLite backup API coverage, manifest verification,
+restore rehearsal, fault injection, private-output policy, and no importer.
+Do not import, rewrite, merge, approve, delete, or retire records.

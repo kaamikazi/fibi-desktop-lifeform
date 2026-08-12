@@ -16,7 +16,7 @@ flowchart TD
     Legacy --> LegacyDb["Existing legacy SQLite"]
     Rag --> RagDb["Existing RAG SQLite"]
     Rag -. ranked references .-> Index["Existing FAISS or NumPy index"]
-    Query -. explicit synthetic use only .-> Shadow["MemoryShadowComparison (off)"]
+    Query -. explicit synthetic tool only .-> Shadow["MemoryComparisonService"]
     Query -. disconnected candidates .-> Preview["ContextBrokerPreview (off)"]
 ```
 
@@ -67,22 +67,22 @@ choose an owner, resolve contradictions, alter IDs, or rewrite consent.
 
 Current Core retrieval does not call `MemoryQueryService`. The Context Broker
 preview is disabled and disconnected from Gemini and Ollama. Normal startup
-does not run shadow comparison. Consequently, Stage 1 changes no generated
+does not import, construct, or run comparison. Consequently, Stage 1 changes no generated
 reply, provider request, Memory Viewer result, memory command, or persisted
 memory.
 
 ## Removal And Rollback
 
-To remove Stage 1, delete the three Stage 1 fields from `ApplicationServices`,
+To remove Stage 1, delete the two Stage 1 fields from `ApplicationServices`,
 remove `_attach_memory_read_boundary` from the composition root, and remove the
 new `fibi.memory` read modules. No data rollback or index rebuild is required
 because Stage 1 creates and mutates no persistent data.
 
-## Stage 2 Gate
+## Stage 2 Status
 
-Stage 2 remains blocked until the full regression suite proves stable source
-provenance, deleted/sensitive exclusion, deterministic synthetic metrics, no
-startup comparison, no provider context change, and one runtime-owned instance
-across the Pet and Control Center. Backup, restore, transactional conflict
-handling, and user-reviewed migration remain separate requirements before any
-write migration.
+Stage 2 synthetic comparison now proves stable source provenance,
+deleted/sensitive exclusion, aggregate metrics, no startup comparison, no
+provider context change, and shared runtime ownership. It does not inspect real
+user data. Stage 3 remains blocked by backup, restore, transactional conflict
+handling, deletion consistency, consent consolidation, and separately approved
+private evidence.

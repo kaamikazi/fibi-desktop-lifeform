@@ -36,6 +36,13 @@ are retired in stages.
   it receives already-normalized candidates and is disconnected by default.
 - Companion state and operational audit owners cannot be registered as Stage 1
   memory sources.
+- Stage 2 comparison modules cannot import providers, UI, SQLite, companion
+  state, permission engines, or mutation APIs.
+- Default startup, Core, runtime, and generation cannot import or construct the
+  comparison service. Execution is available only through the explicit
+  synthetic developer tool.
+- Comparison reports expose aggregate fields only; matching keys and record
+  references remain ephemeral and are never serialized.
 
 `python tools/check_memory_boundaries.py` runs lightweight AST checks for the
 enforceable import, construction, and mutation-call rules. Behavioral tests
