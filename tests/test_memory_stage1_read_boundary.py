@@ -354,7 +354,6 @@ def test_missing_sources_attach_without_preventing_runtime_construction(tmp_path
     services = SimpleNamespace(
         memory=_LegacyOwner(tmp_path / "missing.db"),
         memory_query=None,
-        memory_shadow_comparison=None,
         context_broker_preview=None,
         secret_sanitizer=SecretSanitizer(),
     )
