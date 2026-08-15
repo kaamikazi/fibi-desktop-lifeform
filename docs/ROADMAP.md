@@ -34,6 +34,10 @@ Exit: supported daily flows pass clean-machine and GUI integration tests.
 
 Complexity: medium-high.
 
+Current status (2026-08-15): the verified local backup and isolated
+restore-rehearsal foundation is complete. Stage 3 migration remains blocked;
+the foundation does not import, merge, rewrite, or restore live memory.
+
 - Make one SQLite repository authoritative.
 - Limit permanent categories to facts, preferences, projects, and approved
   summaries.
