@@ -40,9 +40,24 @@ second source of architectural authority.
 - GUI integration tests depend on installed PyQt6 and a display/offscreen Qt
   setup. Headless compile and pure engine tests remain available without Qt.
 - Windows-only filesystem behavior, including native junction/reparse-point
-  handling and a project-workspace test built with Windows backslashes, still
-  needs a Windows run. Linux does not interpret those backslashes as path
-  separators.
+  handling still needs a Windows run. Project file reads now parse Windows and
+  POSIX separators consistently on every host, with focused traversal,
+  containment, symlink, and no-outside-read regression tests; the Linux tests
+  do not validate packaged Windows behavior.
+- `fibi_state.json` still has multiple engines sharing the same JSON document.
+  `LifeEngine.save_state()` writes a cached snapshot, so a later save can
+  remove an independently persisted pending confirmation, and a stale save
+  from an earlier `LifeEngine` can restore one after cancellation. The
+  redundant asynchronous warmup state-save was removed after a deterministic
+  race reproduction; other shared-state writer paths remain unresolved. Do not
+  treat the warmup fix as a full state-ownership repair. Astra's synthetic
+  review reproduced deletion with `create pending ->
+  LifeEngine.set_repetition_state({})`, and resurrection with `create pending
+  -> construct second LifeEngine -> cancel -> second LifeEngine.save_state()`.
+  A restored pending confirmation can be consumed again before its expiry if
+  the exact phrase is supplied, although existing permission checks still
+  block destructive shutdown execution. Coordinated mutation and delete
+  semantics need a separately scoped design; a naive read-merge is not safe.
 
 ## Release engineering
 
