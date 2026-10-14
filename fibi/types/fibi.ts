@@ -257,6 +257,19 @@ export type SoundEvent = "click" | "happy" | "annoyed" | "sleep" | "wake" | "dra
 
 export type ActionRiskLevel = "safe" | "confirm_required" | "blocked_for_now";
 
+export type ActionResultStatus = "completed" | "failed" | "blocked" | "pending_confirmation";
+
+export type ActionErrorCategory =
+  | "not_found"
+  | "not_allowed"
+  | "confirmation_required"
+  | "invalid_input"
+  | "unsupported"
+  | "platform_error"
+  | "timeout"
+  | "cancelled"
+  | "internal_error";
+
 export interface ActionIntent {
   actionType: string;
   target: string;
@@ -299,6 +312,12 @@ export interface DesktopActionResult {
   target: string;
   providerUsed: string;
   error: string | null;
+  status: ActionResultStatus | string;
+  permissionState: string;
+  errorCode: string | null;
+  metadata: Record<string, string>;
+  errorCategory: ActionErrorCategory | string | null;
+  reversible: boolean;
 }
 
 export interface PendingAction {
@@ -506,6 +525,7 @@ export interface ProjectWorkspace {
   summary: string;
   userAdded: boolean;
   notes: ProjectNote[];
+  aliases: string[];
 }
 
 export interface ProjectScanResult {
@@ -545,6 +565,10 @@ export interface ProjectWorkspaceSettings {
   allowVscodeFolder: boolean;
   readableFileLimitBytes: number;
   autoScanOnAdd: boolean;
+  maxScanDepth: number;
+  maxScanFiles: number;
+  maxScanSeconds: number;
+  maxSearchResults: number;
 }
 
 export interface ProjectRecentFile {

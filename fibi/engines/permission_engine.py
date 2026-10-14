@@ -77,9 +77,9 @@ class PermissionEngine:
         action_settings: ActionSettings,
         privacy_settings: PrivacySettings,
     ) -> str:
-        if action_type in {"open_app", "open_project_vscode"} and not action_settings.allow_open_apps:
+        if action_type in {"open_app", "open_project", "open_project_vscode"} and not action_settings.allow_open_apps:
             return "opening apps disabled"
-        if action_type == "open_folder" and not action_settings.allow_open_apps:
+        if action_type in {"open_folder", "open_file"} and not action_settings.allow_open_apps:
             return "opening folders disabled"
         if action_type in {"open_website", "web_search", "youtube_search", "wikipedia_search"} and not action_settings.allow_web_search:
             return "web actions disabled"

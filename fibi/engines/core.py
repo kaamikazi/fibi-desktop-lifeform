@@ -125,7 +125,7 @@ from fibi.engines.work_session_engine import WorkSessionEngine
 from fibi.engines.work_step_runner import WorkStepRunner
 from fibi.engines.desktop_action_engine import DesktopActionEngine
 from fibi.version import detailed_version_line, version_line
-from fibi.engines.types import ActionIntent, CheckFixPlan, CreatureReaction, FibiResponse, LocalCommandResult, LocalMicroBrainResult, Memory, MemoryCategory, MemoryDeleteRequest, MemoryEditRequest, MemoryExportRequest, Observation, PendingAction, PendingFixSuggestion, ProjectCheckRequest, VoiceTranscriptionResult, WorkSessionPlan, WorkSessionStep, WorkflowRun
+from fibi.engines.types import ActionErrorCategory, ActionIntent, CheckFixPlan, CreatureReaction, DesktopActionResult, FibiResponse, LocalCommandResult, LocalMicroBrainResult, Memory, MemoryCategory, MemoryDeleteRequest, MemoryEditRequest, MemoryExportRequest, Observation, PendingAction, PendingFixSuggestion, ProjectCheckRequest, VoiceTranscriptionResult, WorkSessionPlan, WorkSessionStep, WorkflowRun
 
 CUTE_ONLY_MODEL_REPLIES = {
     "being tiny",
@@ -431,6 +431,14 @@ class FibiCore:
             self._session_check_analysis,
             self._session_suggest_fix,
         )
+        set_productivity_callbacks = getattr(self.desktop_actions, "set_productivity_callbacks", None)
+        if callable(set_productivity_callbacks):
+            set_productivity_callbacks(
+                file_searcher=self._search_native_project_files,
+                note_writer=self.project_workspace.note,
+                note_lister=self._list_native_project_notes,
+                work_session_starter=self._start_work_session,
+            )
         self.workflow_safety = WorkflowSafetyEngine()
         self.workflow_recipes = WorkflowRecipeEngine(safety=self.workflow_safety)
         self.workflow_export = WorkflowExportEngine()
@@ -462,6 +470,7 @@ class FibiCore:
         self._last_applied_patch = None
         self._last_check_result = None
         self._last_check_failure_analysis = None
+        self.last_action_result: DesktopActionResult | None = None
         self._last_check_fix_plan = None
         self._pending_fix_suggestion = None
         self._unclean_shutdown_detected = bool(self.life._saved_state.get("clean_shutdown") is False)
@@ -1207,9 +1216,56 @@ class FibiCore:
         return f"install status: {mode}. {portable}. data: {info.user_data_dir}."
 
     def _open_runtime_folder(self, folder: Path) -> str:
-        self.desktop_actions.register_allowed_path(folder)
-        result = self.desktop_actions.execute(ActionIntent("open_folder", target=str(folder)))
-        return result.message if result.ok else f"couldn't open folder: {result.error or result.message}"
+        if not self.desktop_actions.register_allowed_path(folder):
+            return "couldn't open folder: folder is unavailable or unsafe."
+        result = self._execute_internal_native_action(
+            ActionIntent("open_folder", target=str(folder), raw_text="internal open folder")
+        )
+        return result.message
+
+    def _execute_internal_native_action(self, intent: ActionIntent) -> DesktopActionResult:
+        """Run an internal local command through the same permission gateway."""
+
+        intent_error = self._prepare_action_intent(intent)
+        if intent_error:
+            result = DesktopActionResult(
+                False,
+                intent_error,
+                intent.action_type,
+                self._safe_action_target(intent),
+                error_code="invalid_action_context",
+                error_category=ActionErrorCategory.INVALID_INPUT.value,
+            )
+            self.last_action_result = result.mark_permission("blocked")
+            return self.last_action_result
+        permission = self.permissions.check(
+            intent,
+            self.action_settings.settings,
+            self.privacy.settings,
+            direct_user_initiated=True,
+            quiet_active=self.boundary.quiet.active,
+            boundary_active=self.boundary.boundary.active,
+        )
+        if permission.requires_confirmation or permission.blocked or not permission.allowed:
+            result = DesktopActionResult(
+                False,
+                permission.confirmation_prompt or permission.fibi_reply or permission.reason,
+                intent.action_type,
+                self._safe_action_target(intent),
+                error_code="confirmation_required" if permission.requires_confirmation else "permission_denied",
+                error_category=(
+                    ActionErrorCategory.CONFIRMATION_REQUIRED.value
+                    if permission.requires_confirmation
+                    else ActionErrorCategory.NOT_ALLOWED.value
+                ),
+            )
+            self.last_action_result = result.mark_permission(
+                "pending_confirmation" if permission.requires_confirmation else "blocked"
+            )
+            return self.last_action_result
+        result = self.desktop_actions.execute(intent)
+        self.last_action_result = result.mark_permission("allowed")
+        return self.last_action_result
 
     def record_ui_error(self, where: str, error: Exception) -> None:
         self._last_error_summary = f"{where}: {error}"
@@ -1943,6 +1999,9 @@ class FibiCore:
         return None
 
     def _start_work_session(self, goal: str) -> str:
+        existing = self.work_sessions.active()
+        if existing is not None and existing.status in {"active", "paused"}:
+            return f"work session already active: {existing.user_goal[:120]}."
         project = self.project_workspace.current()
         plan = self.work_planner.plan(goal, project)
         project_id = project.project_id if project else ""
@@ -2377,24 +2436,21 @@ class FibiCore:
             if not note:
                 return self._local_response("note crumb empty.", "thinking")
             ok = self.project_workspace.note(note)
-            if ok:
-                project = self.project_workspace.current()
-                self.memory.save(
-                    MemoryCategory.PROJECT,
-                    f"Project note for {project.name if project else 'project'}: {note[:500]}",
-                    importance=0.5,
-                    source="project_workspace_note",
-                    metadata={"summary_only": True},
-                )
-            return self._local_response("project note tucked away." if ok else "no project nest.", "happy" if ok else "sleepy")
+            return self._local_response(
+                "project note tucked away." if ok else "no project nest or the note looked sensitive.",
+                "happy" if ok else "sleepy",
+            )
         if lowered == "/project open vscode":
             project = self.project_workspace.current()
             if project is None:
                 return self._local_response("no project nest.", "sleepy")
-            result = self.desktop_actions.execute(ActionIntent("open_app", target="code", raw_text=text))
-            if not result.ok:
-                result = self.desktop_actions.execute(ActionIntent("open_app", target="vscode", raw_text=text))
-            return self._local_response("opening the project nest." if result.ok else "couldn't find VS Code creature.", "happy" if result.ok else "sleepy")
+            result = self._execute_internal_native_action(
+                ActionIntent("open_project_vscode", target="current", raw_text=text)
+            )
+            return self._local_response(
+                "opening the project nest." if result.ok else result.message,
+                "happy" if result.ok else "sleepy",
+            )
         if lowered == "/project privacy":
             return self._local_response("registered nests only. no edits without exact confirm. low/medium patches only. no terminal. no secret crumbs.", "sleepy")
         return LocalCommandResult(False)
@@ -2963,18 +3019,35 @@ class FibiCore:
             confirmed=True,
         )
         if not permission.allowed:
+            self.last_action_result = DesktopActionResult(
+                False,
+                permission.fibi_reply or permission.reason,
+                intent.action_type,
+                self._safe_action_target(intent),
+                error_code="permission_denied",
+                error_category=ActionErrorCategory.NOT_ALLOWED.value,
+            ).mark_permission("blocked")
             self._record_action(intent, False, permission.blocked, permission.requires_confirmation, True, permission.fibi_reply)
             return self._action_response(permission.fibi_reply, "sleepy", "action-blocked", True)
         if intent.action_type in {"shutdown_pc", "restart_pc"}:
+            self.last_action_result = DesktopActionResult(
+                False,
+                "destructive system power actions remain disabled",
+                intent.action_type,
+                self._safe_action_target(intent),
+                error_code="destructive_action_blocked",
+                error_category=ActionErrorCategory.NOT_ALLOWED.value,
+            ).mark_permission("blocked")
             reply = self._format_action_result(intent, "confirmed", "blocked", "destructive system power actions remain disabled")
             self._record_action(intent, False, True, False, True, reply)
             return self._action_response(reply, "sleepy", "action-blocked", True, intent.action_type)
         result = self.desktop_actions.execute(intent)
+        self.last_action_result = result.mark_permission("allowed")
         reply = self._format_action_result(
             intent,
             "confirmed and allowed",
-            "completed" if result.ok else "failed",
-            result.message if result.ok else (result.error or result.message),
+            result.status,
+            result.message,
         )
         self._record_action(intent, result.ok, not result.ok, False, True, reply)
         return self._action_response(reply, "happy" if result.ok else "sleepy", result.provider_used, not result.ok, intent.action_type)
@@ -2992,6 +3065,14 @@ class FibiCore:
         print("ACTION_ROUTE_USED: true")
         intent_error = self._prepare_action_intent(intent)
         if intent_error:
+            self.last_action_result = DesktopActionResult(
+                False,
+                intent_error,
+                intent.action_type,
+                self._safe_action_target(intent),
+                error_code="invalid_action_context",
+                error_category=ActionErrorCategory.INVALID_INPUT.value,
+            ).mark_permission("blocked")
             reply = self._format_action_result(intent, "blocked", "failed", intent_error)
             self._record_action(intent, False, True, False, False, reply)
             return self._action_response(reply, "sleepy", "action-blocked", True, intent.action_type)
@@ -3004,6 +3085,14 @@ class FibiCore:
             boundary_active=self.boundary.boundary.active,
         )
         if permission.requires_confirmation:
+            self.last_action_result = DesktopActionResult(
+                False,
+                permission.confirmation_prompt or permission.fibi_reply,
+                intent.action_type,
+                self._safe_action_target(intent),
+                error_code="confirmation_required",
+                error_category=ActionErrorCategory.CONFIRMATION_REQUIRED.value,
+            ).mark_permission("pending_confirmation")
             self.action_confirmations.create(intent)
             reply = self._format_action_result(
                 intent,
@@ -3014,15 +3103,24 @@ class FibiCore:
             self._record_action(intent, False, False, True, False, reply)
             return self._action_response(reply, "thinking", "action-confirmation", False, intent.action_type)
         if permission.blocked or not permission.allowed:
+            self.last_action_result = DesktopActionResult(
+                False,
+                permission.reason or permission.fibi_reply,
+                intent.action_type,
+                self._safe_action_target(intent),
+                error_code="permission_denied",
+                error_category=ActionErrorCategory.NOT_ALLOWED.value,
+            ).mark_permission("blocked")
             reply = self._format_action_result(intent, "blocked", "failed", permission.reason or permission.fibi_reply)
             self._record_action(intent, False, True, False, False, reply)
             return self._action_response(reply, "sleepy", "action-blocked", True, intent.action_type)
         result = self.desktop_actions.execute(intent)
+        self.last_action_result = result.mark_permission("allowed")
         reply = self._format_action_result(
             intent,
             "allowed",
-            "completed" if result.ok else "failed",
-            result.message if result.ok else (result.error or result.message),
+            result.status,
+            result.message,
         )
         self._record_action(intent, result.ok, not result.ok, False, False, reply)
         return self._action_response(
@@ -3039,23 +3137,50 @@ class FibiCore:
         if intent.action_type in {"copy_text", "type_text"} and contains_secret_marker(intent.target):
             intent.target = "[sensitive text blocked]"
             return "text appears to contain a secret"
-        if intent.action_type == "open_project_vscode":
-            requested = intent.target.lower().strip()
-            projects = self.project_workspace.list_workspaces()
-            project = next(
-                (
-                    item
-                    for item in projects
-                    if item.name.lower() == requested
-                    or requested in {"current", "this", "fibi"} and "fibi" in item.name.lower()
-                ),
-                self.project_workspace.current() if requested in {"current", "this"} else None,
-            )
+        if intent.action_type in {"open_project", "open_project_vscode"}:
+            requested = intent.target.casefold().strip()
+            project = self.project_workspace.current() if requested in {"current", "this"} else self.project_workspace.find(requested)
+            if project is None and requested == "fibi":
+                project = next(
+                    (item for item in self.project_workspace.list_workspaces() if "fibi" in item.name.casefold()),
+                    None,
+                )
             if project is None:
                 return "project is not registered"
+            if not self.project_workspace.is_available(project):
+                return "that registered project folder is missing or moved"
+            if not self.desktop_actions.register_allowed_path(project.root_path):
+                return "that registered project path is not safe"
             intent.target = project.root_path
             intent.query = project.name
-            self.desktop_actions.register_allowed_path(project.root_path)
+        if intent.action_type == "open_file" and intent.target:
+            candidate = Path(intent.target).expanduser()
+            if not candidate.is_absolute():
+                project = self.project_workspace.current()
+                if project is None:
+                    return "register a project before opening a relative file"
+                candidate = Path(project.root_path) / candidate
+                if not self.desktop_actions.register_allowed_path(project.root_path):
+                    return "project path is not safe"
+            elif not self.desktop_actions.is_path_allowed(candidate):
+                project = self.project_workspace.workspace_for_path(candidate)
+                if project is None or not self.desktop_actions.register_allowed_path(project.root_path):
+                    return "file must be inside a registered project"
+            intent.target = str(candidate)
+        if intent.action_type == "open_folder" and intent.target:
+            candidate = Path(intent.target).expanduser()
+            if not candidate.is_absolute():
+                project = self.project_workspace.current()
+                if project is None:
+                    return "register a project before opening a relative folder"
+                candidate = Path(project.root_path) / candidate
+                if not self.desktop_actions.register_allowed_path(project.root_path):
+                    return "project path is not safe"
+            elif not self.desktop_actions.is_path_allowed(candidate):
+                project = self.project_workspace.workspace_for_path(candidate)
+                if project is not None and not self.desktop_actions.register_allowed_path(project.root_path):
+                    return "project path is not safe"
+            intent.target = str(candidate)
         if intent.action_type == "run_safe_command":
             project = self.project_workspace.current()
             if project:
@@ -3063,17 +3188,49 @@ class FibiCore:
                 self.desktop_actions.register_allowed_path(project.root_path)
         return ""
 
+    def _search_native_project_files(self, query: str) -> list[str]:
+        """Return only safe relative paths for the native bounded search action."""
+
+        return [entry.relative_path for entry in self.project_workspace.search(query, limit=5) if entry.safe_to_read]
+
+    def _list_native_project_notes(self) -> list[str]:
+        """Return only explicit project-note summaries for native action output."""
+
+        return self.project_workspace.recent_notes(limit=5)
+
     @staticmethod
     def _format_action_result(intent: ActionIntent, permission: str, result: str, reason: str) -> str:
-        target = intent.target or intent.query or "none"
-        if intent.action_type in {"copy_text", "type_text"}:
-            target = "[user-approved text]"
+        target = FibiCore._safe_action_target(intent)
         return (
             f"Action requested: {intent.action_type} - {target}\n"
             f"Permission: {permission}\n"
             f"Result: {result}\n"
             f"Reason: {reason}"
         )
+
+    @staticmethod
+    def _safe_action_target(intent: ActionIntent) -> str:
+        """Keep absolute paths and user payloads out of action responses."""
+
+        if intent.action_type in {"open_folder", "open_file", "open_project", "open_project_vscode", "create_folder"}:
+            return {
+                "open_folder": "[approved folder]",
+                "open_file": "[approved file]",
+                "open_project": "[registered project]",
+                "open_project_vscode": "[registered project]",
+                "create_folder": "[approved folder]",
+            }[intent.action_type]
+        if intent.action_type in {"copy_text", "type_text"}:
+            return "[user-approved text]"
+        if intent.action_type in {"save_note", "list_notes"}:
+            return "[project note]" if intent.action_type == "save_note" else "[project notes]"
+        value = intent.target or intent.query or "none"
+        if (
+            (len(value) > 2 and value[1] == ":" and value[2:3] in {"/", "\\"})
+            or value.startswith(("/", "\\\\"))
+        ):
+            return "[approved local target]"
+        return value[:160]
 
     def _record_action(
         self,
@@ -3086,7 +3243,7 @@ class FibiCore:
     ) -> None:
         definition = get_action_definition(intent.action_type)
         risk = definition.risk_level.value if definition else "unknown"
-        target = intent.target or intent.query
+        target = self._safe_action_target(intent)
         self.action_journal.record(
             intent.action_type,
             target,
@@ -3134,6 +3291,14 @@ class FibiCore:
             True,
             False,
         )
+        if self.last_action_result is not None:
+            LOGGER.info(
+                "native_action_result action=%s status=%s permission=%s error_code=%s",
+                self.last_action_result.action_type,
+                self.last_action_result.status,
+                self.last_action_result.permission_state,
+                self.last_action_result.error_code or "none",
+            )
         print(f"FINAL_REPLY_TIME_MS: {(time.perf_counter() - started) * 1000:.1f}")
         priority = "low" if action_type in {"tell_date", "tell_time"} or model_used.startswith("local-action") else "medium"
         print(f"TTS_PRIORITY: {priority}")

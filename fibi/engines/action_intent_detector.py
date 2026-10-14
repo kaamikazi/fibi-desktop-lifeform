@@ -66,8 +66,66 @@ class ActionIntentDetector:
 
         project_match = re.match(r"^open\s+(?:my\s+)?(.+?)\s+project\s+in\s+(?:vs\s*code|vscode)$", lowered)
         if project_match:
-            project_name = project_match.group(1).strip()
+            project_name = re.sub(r"^the\s+", "", project_match.group(1).strip())
             return ActionIntent("open_project_vscode", target=project_name, raw_text=text)
+
+        if lowered in {"open project", "open project folder", "open project directory", "open my project"}:
+            return ActionIntent("open_project", target="current", raw_text=text)
+        project_first_match = re.match(
+            r"^open\s+(?:my\s+)?project\s+(.+?)(?:\s+(?:folder|directory))?$",
+            lowered,
+        )
+        if project_first_match:
+            target = re.sub(r"^the\s+", "", project_first_match.group(1).strip())
+            return ActionIntent("open_project", target=target, raw_text=text)
+        project_last_match = re.match(
+            r"^open\s+(?:my\s+)?(.+?)\s+project(?:\s+(?:folder|directory))?$",
+            lowered,
+        )
+        if project_last_match:
+            target = re.sub(r"^the\s+", "", project_last_match.group(1).strip())
+            return ActionIntent("open_project", target=target, raw_text=text)
+
+        folder_match = re.match(r"^open\s+(?:the\s+)?(?:folder|directory)\s+(.+)$", text, re.IGNORECASE)
+        if folder_match:
+            folder_target = folder_match.group(1).strip()
+            named_folder = named_user_folders().get(self._normalize(folder_target))
+            return ActionIntent(
+                "open_folder",
+                target=str(named_folder or folder_target),
+                raw_text=text,
+            )
+
+        file_match = re.match(r"^open\s+(?:the\s+)?file\s+(.+)$", text, re.IGNORECASE)
+        if file_match:
+            return ActionIntent("open_file", target=file_match.group(1).strip(), raw_text=text)
+
+        search_files_match = re.match(
+            r"^(?:search|find)\s+(?:the\s+)?(?:files?|project)\s+(?:for|containing|with)\s+(.+)$",
+            text,
+            re.IGNORECASE,
+        )
+        if search_files_match:
+            return ActionIntent("search_files", query=search_files_match.group(1).strip(), raw_text=text)
+
+        note_match = re.match(
+            r"^(?:take|save|write|add)\s+(?:a\s+)?note(?:\s*[:\-]\s*|\s+)(.+)$",
+            text,
+            re.IGNORECASE,
+        )
+        if note_match:
+            return ActionIntent("save_note", target=note_match.group(1).strip(), raw_text=text)
+
+        session_match = re.match(
+            r"^(?:start|begin)\s+(?:a\s+)?(?:work\s+)?session(?:\s*(?:for|to|:)?\s+)(.+)$",
+            text,
+            re.IGNORECASE,
+        )
+        if session_match:
+            return ActionIntent("start_work_session", target=session_match.group(1).strip(), raw_text=text)
+
+        if lowered in {"show notes", "show my notes", "show recent notes", "show my recent notes", "my recent notes", "list notes"}:
+            return ActionIntent("list_notes", raw_text=text)
 
         create_match = re.match(
             r"^create\s+(?:a\s+)?folder\s+(?:named\s+)?(.+?)\s+(?:on|in)\s+(desktop|downloads|documents)$",
@@ -79,7 +137,7 @@ class ActionIntentDetector:
 
         copy_match = re.match(r"^copy\s+(?:this\s+)?text(?:\s*:\s*|\s+)?(.*)$", text, re.IGNORECASE)
         if copy_match:
-            copy_target = copy_match.group(1).strip() or "this text"
+            copy_target = copy_match.group(1).strip()
             return ActionIntent("copy_text", target=copy_target, raw_text=text)
 
         if re.search(r"\b(type for me|auto type)\b", lowered):
@@ -142,7 +200,10 @@ class ActionIntentDetector:
         match = re.match(r"^open\s+(.+)$", lowered)
         if match:
             target = text.split(maxsplit=1)[1].strip()
-            normalized = target.lower()
+            normalized = self._normalize(target)
+            normalized = re.sub(r"^(?:the|my)\s+", "", normalized)
+            if normalized.endswith(" folder"):
+                normalized = normalized[:-7].strip()
             if normalized in named_user_folders():
                 return ActionIntent("open_folder", target=str(named_user_folders()[normalized]), raw_text=text)
             if normalized in KNOWN_WEBSITES:
@@ -191,4 +252,4 @@ class ActionIntentDetector:
     def _normalize(text: str) -> str:
         cleaned = text.lower().replace("’", "'").replace("‘", "'").replace("`", "'")
         cleaned = re.sub(r"\s+", " ", cleaned).strip()
-        return re.sub(r"[.!?]+$", "", cleaned).strip()
+        return re.sub(r"[.!?,;:]+$", "", cleaned).strip()

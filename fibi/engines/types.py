@@ -353,14 +353,64 @@ class ActionPermissionResult:
     fibi_reply: str = ""
 
 
+class ActionResultStatus(str, Enum):
+    """Normalized lifecycle state shared by native action adapters."""
+
+    COMPLETED = "completed"
+    FAILED = "failed"
+    BLOCKED = "blocked"
+    PENDING_CONFIRMATION = "pending_confirmation"
+
+
+class ActionErrorCategory(str, Enum):
+    """Stable, non-secret categories for deterministic native failures."""
+
+    NOT_FOUND = "not_found"
+    NOT_ALLOWED = "not_allowed"
+    CONFIRMATION_REQUIRED = "confirmation_required"
+    INVALID_INPUT = "invalid_input"
+    UNSUPPORTED = "unsupported"
+    PLATFORM_ERROR = "platform_error"
+    TIMEOUT = "timeout"
+    CANCELLED = "cancelled"
+    INTERNAL_ERROR = "internal_error"
+
+
 @dataclass(slots=True)
 class DesktopActionResult:
+    """Small, compatible result contract for a native action.
+
+    The first fields intentionally preserve the v0.12 positional constructor.
+    New callers can use ``status``, ``permission_state`` and ``error_code``
+    without exposing exception text, private paths, or command output.
+    """
+
     ok: bool
     message: str
     action_type: str
     target: str = ""
     provider_used: str = "local-action"
     error: str | None = None
+    status: str = ""
+    permission_state: str = "not_checked"
+    error_code: str | None = None
+    metadata: dict[str, str] = field(default_factory=dict)
+    error_category: str | None = None
+    reversible: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.status:
+            self.status = ActionResultStatus.COMPLETED.value if self.ok else ActionResultStatus.FAILED.value
+
+    def mark_permission(self, permission_state: str) -> "DesktopActionResult":
+        """Attach permission state while keeping one result object in flight."""
+
+        self.permission_state = permission_state
+        if permission_state == "blocked":
+            self.status = ActionResultStatus.BLOCKED.value
+        elif permission_state == "pending_confirmation":
+            self.status = ActionResultStatus.PENDING_CONFIRMATION.value
+        return self
 
 
 @dataclass(slots=True)
@@ -811,6 +861,7 @@ class ProjectWorkspace:
     summary: str = ""
     user_added: bool = True
     notes: list[ProjectNote] = field(default_factory=list)
+    aliases: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -855,6 +906,10 @@ class ProjectWorkspaceSettings:
     allow_vscode_folder: bool = True
     readable_file_limit_bytes: int = 1_000_000
     auto_scan_on_add: bool = True
+    max_scan_depth: int = 12
+    max_scan_files: int = 10_000
+    max_scan_seconds: float = 5.0
+    max_search_results: int = 12
 
 
 @dataclass(slots=True)

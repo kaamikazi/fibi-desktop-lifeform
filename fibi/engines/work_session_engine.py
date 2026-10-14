@@ -24,6 +24,10 @@ class WorkSessionEngine:
         self.state = self._load()
 
     def create_session(self, project_id: str, user_goal: str, plan: WorkSessionPlan) -> WorkSession:
+        existing = self.active()
+        if existing is not None and existing.status in {"active", "paused"}:
+            LOGGER.info("session_start_reused", extra={"session_id": existing.session_id})
+            return existing
         now = self._now()
         session = WorkSession(
             session_id=uuid.uuid4().hex[:12],

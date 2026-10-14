@@ -50,7 +50,7 @@ def contains_secret_marker(text: str) -> bool:
 
     return bool(
         re.search(
-            r"\b(api[_-]?key|token|password|passwd|secret|authorization)\b\s*[:=]",
+            r"(?:\b(api[_-]?key|token|password|passwd|secret|authorization)\b\s*[:=]\s*\S+|-----BEGIN [A-Z ]*PRIVATE KEY-----|\b(?:sk-|pk_|ghp_|AIza)[A-Za-z0-9_-]{16,})",
             text or "",
             flags=re.IGNORECASE,
         )

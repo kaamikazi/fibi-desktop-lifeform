@@ -21,6 +21,7 @@ class ActionTypeDefinition:
     success_lines: list[str] = field(default_factory=list)
     blocked_lines: list[str] = field(default_factory=list)
     confirmation_lines: list[str] = field(default_factory=list)
+    permission_scope: str = "LOW_RISK"
 
 
 SUCCESS_LINES = ["opening it.", "app creature summoned.", "internet hole opened.", "tiny volume push."]
@@ -28,7 +29,7 @@ BLOCKED_LINES = ["nope. too dangerous.", "human hands for that.", "tiny creature
 CONFIRMATION_LINES = ["danger button.", "confirm?", "say the scary words."]
 
 
-def _safe(name: str, description: str) -> ActionTypeDefinition:
+def _safe(name: str, description: str, permission_scope: str = "LOW_RISK") -> ActionTypeDefinition:
     return ActionTypeDefinition(
         name,
         ActionRiskLevel.SAFE,
@@ -38,10 +39,11 @@ def _safe(name: str, description: str) -> ActionTypeDefinition:
         SUCCESS_LINES,
         BLOCKED_LINES,
         CONFIRMATION_LINES,
+        permission_scope,
     )
 
 
-def _confirm(name: str, description: str) -> ActionTypeDefinition:
+def _confirm(name: str, description: str, permission_scope: str = "LOW_RISK") -> ActionTypeDefinition:
     return ActionTypeDefinition(
         name,
         ActionRiskLevel.CONFIRM_REQUIRED,
@@ -51,10 +53,11 @@ def _confirm(name: str, description: str) -> ActionTypeDefinition:
         SUCCESS_LINES,
         BLOCKED_LINES,
         CONFIRMATION_LINES,
+        permission_scope,
     )
 
 
-def _blocked(name: str, description: str) -> ActionTypeDefinition:
+def _blocked(name: str, description: str, permission_scope: str = "DESTRUCTIVE_SECURITY_SENSITIVE") -> ActionTypeDefinition:
     return ActionTypeDefinition(
         name,
         ActionRiskLevel.BLOCKED_FOR_NOW,
@@ -64,12 +67,15 @@ def _blocked(name: str, description: str) -> ActionTypeDefinition:
         SUCCESS_LINES,
         BLOCKED_LINES,
         CONFIRMATION_LINES,
+        permission_scope,
     )
 
 
 ACTION_TYPES: dict[str, ActionTypeDefinition] = {
     "open_app": _safe("open_app", "Open a known indexed desktop app."),
     "open_folder": _safe("open_folder", "Open an allowlisted user folder."),
+    "open_file": _safe("open_file", "Open one approved file inside an allowlisted root."),
+    "open_project": _safe("open_project", "Open a registered project folder."),
     "open_project_vscode": _safe("open_project_vscode", "Open a registered project in indexed VS Code."),
     "open_website": _safe("open_website", "Open a known website in the default browser."),
     "copy_text": _safe("copy_text", "Copy user-provided non-secret text to the clipboard."),
@@ -80,19 +86,23 @@ ACTION_TYPES: dict[str, ActionTypeDefinition] = {
     "volume_down": _safe("volume_down", "Press the system volume-down media key."),
     "mute": _safe("mute", "Press the system mute media key."),
     "unmute": _safe("unmute", "Press the system mute media key when audio is muted."),
-    "tell_time": _safe("tell_time", "Tell the local system time."),
-    "tell_date": _safe("tell_date", "Tell the local system date."),
-    "refresh_app_index": _safe("refresh_app_index", "Refresh the local app index."),
-    "list_known_apps": _safe("list_known_apps", "Summarize known local apps."),
-    "search_known_apps": _safe("search_known_apps", "Search the local app index."),
-    "screenshot": _confirm("screenshot", "Take a screenshot, disabled by default."),
+    "tell_time": _safe("tell_time", "Tell the local system time.", "READ_ONLY"),
+    "tell_date": _safe("tell_date", "Tell the local system date.", "READ_ONLY"),
+    "refresh_app_index": _safe("refresh_app_index", "Refresh the local app index.", "READ_ONLY"),
+    "list_known_apps": _safe("list_known_apps", "Summarize known local apps.", "READ_ONLY"),
+    "search_known_apps": _safe("search_known_apps", "Search the local app index.", "READ_ONLY"),
+    "search_files": _safe("search_files", "Search metadata and safe previews inside the current registered project.", "READ_ONLY"),
+    "save_note": _safe("save_note", "Save one explicit note to the current registered project.", "MODIFY_LOCAL"),
+    "list_notes": _safe("list_notes", "Show recent explicit notes from registered projects.", "READ_ONLY"),
+    "start_work_session": _safe("start_work_session", "Start a supervised local work session."),
+    "screenshot": _confirm("screenshot", "Take a screenshot, disabled by default.", "SECURITY_SENSITIVE"),
     "type_text": _confirm("type_text", "Type user-approved non-secret text into the active application."),
-    "create_folder": _confirm("create_folder", "Create one folder inside an allowlisted location."),
-    "run_safe_command": _confirm("run_safe_command", "Run one exact command from Fibi's safe command allowlist."),
-    "shutdown_pc": _confirm("shutdown_pc", "Shut down the PC, disabled by default."),
-    "restart_pc": _confirm("restart_pc", "Restart the PC, disabled by default."),
-    "open_file_location": _confirm("open_file_location", "Open a file location, disabled by default."),
-    "launch_unknown_executable": _confirm("launch_unknown_executable", "Launch an unknown executable, disabled by default."),
+    "create_folder": _confirm("create_folder", "Create one folder inside an allowlisted location.", "MODIFY_LOCAL"),
+    "run_safe_command": _confirm("run_safe_command", "Run one exact command from Fibi's safe command allowlist.", "MODIFY_LOCAL"),
+    "shutdown_pc": _confirm("shutdown_pc", "Shut down the PC, disabled by default.", "DESTRUCTIVE_SECURITY_SENSITIVE"),
+    "restart_pc": _confirm("restart_pc", "Restart the PC, disabled by default.", "DESTRUCTIVE_SECURITY_SENSITIVE"),
+    "open_file_location": _confirm("open_file_location", "Open a file location, disabled by default.", "SECURITY_SENSITIVE"),
+    "launch_unknown_executable": _confirm("launch_unknown_executable", "Launch an unknown executable, disabled by default.", "SECURITY_SENSITIVE"),
     "delete_file": _blocked("delete_file", "Delete files. Not allowed in v0.12."),
     "modify_file": _blocked("modify_file", "Modify files. Not allowed in v0.12."),
     "run_terminal_command": _blocked("run_terminal_command", "Run terminal commands. Not allowed in v0.12."),

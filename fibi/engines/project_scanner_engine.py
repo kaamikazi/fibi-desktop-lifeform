@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import json
 import os
+import time
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
 from fibi.engines.file_reader_engine import SUPPORTED_TEXT_EXTENSIONS
+from fibi.engines.path_safety import contains_reparse_point, is_reparse_point
 from fibi.engines.secret_sanitizer import SecretSanitizer
 from fibi.engines.types import ProjectFileEntry, ProjectScanResult, ProjectWorkspace
 
@@ -60,21 +63,70 @@ BINARY_EXTENSIONS = {
 class ProjectScannerEngine:
     """Scan project metadata without reading private or generated content."""
 
-    def __init__(self, sanitizer: SecretSanitizer | None = None, readable_limit_bytes: int = 1_000_000) -> None:
+    def __init__(
+        self,
+        sanitizer: SecretSanitizer | None = None,
+        readable_limit_bytes: int = 1_000_000,
+        max_depth: int = 12,
+        max_files: int = 10_000,
+        max_seconds: float = 5.0,
+    ) -> None:
         self.sanitizer = sanitizer or SecretSanitizer()
         self.readable_limit_bytes = readable_limit_bytes
+        self.max_depth = max(0, int(max_depth))
+        self.max_files = max(1, int(max_files))
+        self.max_seconds = max(0.0, float(max_seconds))
 
-    def scan(self, workspace: ProjectWorkspace) -> ProjectScanResult:
-        root = Path(workspace.root_path).resolve()
+    def scan(
+        self,
+        workspace: ProjectWorkspace,
+        cancel_check: Callable[[], bool] | None = None,
+    ) -> ProjectScanResult:
+        candidate_root = Path(workspace.root_path)
+        if contains_reparse_point(candidate_root):
+            return ProjectScanResult(False, workspace, message="project path is not safe.", error="unsafe_link_or_reparse_point")
+        root = candidate_root.resolve()
         if not root.exists() or not root.is_dir():
             return ProjectScanResult(False, workspace, message="project nest missing.", error="missing")
         files: list[ProjectFileEntry] = []
         ignored_count = 0
-        for current, dirs, filenames in os.walk(root):
-            dirs[:] = [name for name in dirs if not self._ignore_dir(name)]
+        cancelled = False
+        bounded = False
+        timed_out = False
+        deadline = time.monotonic() + self.max_seconds
+        for current, dirs, filenames in os.walk(root, followlinks=False):
             current_path = Path(current)
+            try:
+                depth = len(current_path.relative_to(root).parts)
+            except ValueError:
+                continue
+            if time.monotonic() >= deadline:
+                timed_out = True
+                break
+            if cancel_check and cancel_check():
+                cancelled = True
+                break
+            dirs[:] = [
+                name
+                for name in dirs
+                if depth < self.max_depth
+                and not self._ignore_dir(name)
+                and not is_reparse_point(current_path / name)
+            ]
             for filename in filenames:
+                if time.monotonic() >= deadline:
+                    timed_out = True
+                    break
+                if cancel_check and cancel_check():
+                    cancelled = True
+                    break
+                if len(files) >= self.max_files:
+                    bounded = True
+                    break
                 path = current_path / filename
+                if is_reparse_point(path):
+                    ignored_count += 1
+                    continue
                 try:
                     relative = path.relative_to(root).as_posix()
                 except ValueError:
@@ -84,12 +136,21 @@ class ProjectScannerEngine:
                 if not entry.safe_to_read:
                     ignored_count += 1
                 files.append(entry)
+            if cancelled or bounded or timed_out:
+                break
         stack = self.detect_stack(root, files)
         workspace.file_count = len([entry for entry in files if entry.safe_to_read])
         workspace.detected_stack = stack
         workspace.last_scanned_at = datetime.now().astimezone().isoformat(timespec="seconds")
         workspace.summary = self.summary_text(workspace, files)
-        return ProjectScanResult(True, workspace, files, ignored_count, "found code crumbs.", None)
+        if cancelled:
+            return ProjectScanResult(False, workspace, files, ignored_count, "file scan canceled.", "cancelled")
+        if timed_out:
+            return ProjectScanResult(False, workspace, files, ignored_count, "file scan timed out.", "timeout")
+        message = "found code crumbs."
+        if bounded:
+            message = f"found code crumbs. scan bounded at {self.max_files} files."
+        return ProjectScanResult(True, workspace, files, ignored_count, message, None)
 
     def _entry(self, path: Path, relative: str) -> ProjectFileEntry:
         suffix = path.suffix.lower()
@@ -197,3 +258,7 @@ class ProjectScannerEngine:
     def _secret_file(name: str) -> bool:
         lowered = name.lower()
         return lowered in SECRET_FILENAMES or lowered.endswith(".pem") or lowered.endswith(".key") or lowered.startswith(SECRET_PREFIXES)
+
+    @staticmethod
+    def _is_reparse_point(path: Path) -> bool:
+        return is_reparse_point(path)

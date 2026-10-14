@@ -28,6 +28,7 @@ from fibi.engines.observation_engine import ObservationEngine
 from fibi.engines.pattern_engine import PatternEngine
 from fibi.engines.permission_engine import PermissionEngine
 from fibi.engines.privacy_settings_engine import PrivacySettingsEngine
+from fibi.engines.project_workspace_engine import ProjectWorkspaceEngine
 from fibi.engines.types import ActionIntent, ModelResult, Observation
 
 
@@ -75,6 +76,7 @@ def make_core(root: Path, opened: list[str], launched: list[str]) -> tuple[FibiC
         desktop_actions=actions,
         action_journal=ActionJournalEngine(root / "action_journal.jsonl"),
         action_confirmations=ActionConfirmationEngine(state),
+        project_workspace=ProjectWorkspaceEngine(root / "project_workspaces.json"),
     )
     return core, model, app_index
 

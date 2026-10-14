@@ -85,7 +85,11 @@ def make_core(root: Path, project: Path, launched: list[str]) -> FibiCore:
         context_engine=context,
         project_workspace=workspace,
         app_index=app_index,
-        desktop_actions=DesktopActionEngine(app_index, app_launcher=lambda path: launched.append(path)),
+        desktop_actions=DesktopActionEngine(
+            app_index,
+            app_launcher=lambda path: launched.append(path),
+            project_launcher=lambda executable, target: launched.append(target),
+        ),
     )
 
 
@@ -136,8 +140,8 @@ def run() -> None:
 
         note = core.respond("/project note remember this is the desktop creature project")
         assert "project note" in note.display_text
-        memories = core.memory.retrieve("desktop creature project", limit=3)
-        assert memories
+        assert core.project_workspace.current().notes[-1].text == "remember this is the desktop creature project"
+        assert not core.memory.retrieve("desktop creature project", limit=3)
 
         current = core.respond("/project current")
         assert "KamikazeOS" in current.display_text

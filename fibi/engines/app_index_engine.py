@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Callable, Mapping
 
 from fibi.engines.types import AppIndexEntry, AppSearchResult
+from fibi.engines.path_safety import contains_reparse_point, is_reparse_point
 from fibi.paths import data_path
 
 APP_INDEX_PATH = data_path("app_index.json")
@@ -168,18 +169,26 @@ class AppIndexEngine:
             return False, "Choose an absolute executable path."
         if candidate.suffix.lower() != ".exe":
             return False, "Only .exe application files can be registered."
+        if contains_reparse_point(candidate):
+            return False, "Executable links and reparse points cannot be registered."
         if not candidate.exists() or not candidate.is_file():
             return False, "Executable file was not found."
         return True, str(candidate.resolve())
 
-    def resolve_app(self, query: str) -> AppIndexEntry | None:
+    def resolve_app(self, query: str, *, executable_only: bool = False) -> AppIndexEntry | None:
         """Resolve a safe app without accepting executable paths from chat text."""
 
         if not query.strip() or any(token in query for token in ("/", "\\", ":")):
             return None
         normalized = normalize_app_name(query)
         registered = next(
-            (entry for entry in self.entries if entry.normalized_name == normalized and self._entry_valid(entry)),
+            (
+                entry
+                for entry in self.entries
+                if entry.normalized_name == normalized
+                and self._entry_valid(entry)
+                and (not executable_only or Path(entry.path).suffix.lower() == ".exe")
+            ),
             None,
         )
         if registered:
@@ -196,16 +205,18 @@ class AppIndexEngine:
                 entry
                 for entry in self.entries
                 if entry.normalized_name in aliases and self._entry_valid(entry)
+                and (not executable_only or Path(entry.path).suffix.lower() == ".exe")
             ),
             None,
         )
         if registered_alias:
             return registered_alias
 
-        for command in config.get("commands", ()):
-            resolved = self.which_lookup(str(command))
-            if resolved and self._executable_exists(resolved):
-                return self._resolved_entry(display, resolved, "path")
+        # Start-menu shortcuts are the most reliable Windows-native discovery
+        # source for packaged apps, especially New Teams and Calculator.
+        start_menu = self._find_start_menu_entry(config)
+        if start_menu and (not executable_only or start_menu.suffix.lower() == ".exe"):
+            return self._resolved_entry(display, str(start_menu), "start-menu")
 
         for variable, relative in config.get("locations", ()):
             root = self.environment.get(str(variable), "")
@@ -213,17 +224,23 @@ class AppIndexEngine:
                 continue
             candidates = list(Path(root).glob(str(relative))) if "*" in str(relative) else [Path(root) / Path(str(relative))]
             for candidate in candidates:
-                if candidate.exists() and candidate.is_file() and candidate.suffix.lower() == ".exe":
+                if self._executable_exists(str(candidate)) and candidate.suffix.lower() == ".exe":
                     return self._resolved_entry(display, str(candidate.resolve()), "known-location")
 
-        start_menu = self._find_start_menu_entry(config)
-        if start_menu:
-            return self._resolved_entry(display, str(start_menu), "start-menu")
+        for command in config.get("commands", ()):
+            resolved = self.which_lookup(str(command))
+            if resolved and self._executable_exists(resolved) and (not executable_only or Path(resolved).suffix.lower() == ".exe"):
+                return self._resolved_entry(display, resolved, "path")
 
         app_id = str(config.get("app_id", ""))
         if app_id in TRUSTED_APP_IDS:
             return self._resolved_entry(display, app_id, "windows-app-id")
         return None
+
+    def resolve_executable_app(self, query: str) -> AppIndexEntry | None:
+        """Resolve a known app only when a safe `.exe` target is available."""
+
+        return self.resolve_app(query, executable_only=True)
 
     def display_name_for(self, query: str) -> str:
         key = self._known_app_key(normalize_app_name(query))
@@ -306,10 +323,10 @@ class AppIndexEngine:
                 if shortcut.suffix.lower() != ".lnk":
                     continue
                 name = normalize_app_name(shortcut.stem)
-                if not any(alias == name or alias in name for alias in aliases):
+                if name not in aliases:
                     continue
                 resolved = self._resolve_shortcut(shortcut)
-                if resolved and resolved.exists() and resolved.suffix.lower() in {".exe", ".lnk"}:
+                if resolved and self._executable_exists(str(resolved)):
                     return resolved
         return None
 
@@ -335,7 +352,12 @@ class AppIndexEngine:
     @staticmethod
     def _executable_exists(path: str) -> bool:
         candidate = Path(path)
-        return candidate.exists() and candidate.is_file() and candidate.suffix.lower() in {".exe", ".lnk"}
+        return (
+            candidate.exists()
+            and candidate.is_file()
+            and candidate.suffix.lower() in {".exe", ".lnk"}
+            and not contains_reparse_point(candidate)
+        )
 
     @staticmethod
     def _entry_valid(entry: AppIndexEntry) -> bool:
@@ -347,18 +369,27 @@ class AppIndexEngine:
     def _safe_walk(root: Path) -> list[Path]:
         matches: list[Path] = []
         try:
-            for current, dirs, files in os.walk(root):
+            for current, dirs, files in os.walk(root, followlinks=False):
                 depth = len(Path(current).relative_to(root).parts)
                 if depth > 2:
                     dirs[:] = []
                     continue
+                dirs[:] = [
+                    name
+                    for name in dirs
+                    if not AppIndexEngine._is_reparse_point(Path(current) / name)
+                ]
                 for filename in files:
                     path = Path(current) / filename
-                    if path.suffix.lower() in {".lnk", ".exe"}:
+                    if path.suffix.lower() in {".lnk", ".exe"} and not AppIndexEngine._is_reparse_point(path):
                         matches.append(path)
         except OSError:
             return matches
         return matches
+
+    @staticmethod
+    def _is_reparse_point(path: Path) -> bool:
+        return is_reparse_point(path)
 
     @staticmethod
     def _resolve_shortcut(path: Path) -> Path | None:

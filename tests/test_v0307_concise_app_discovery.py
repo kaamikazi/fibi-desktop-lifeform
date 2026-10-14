@@ -98,7 +98,7 @@ def test_saved_registry_precedes_path_lookup(tmp_path: Path) -> None:
 @pytest.mark.parametrize("alias", ["VS Code", "vscode", "code", "Code.exe"])
 def test_vscode_alias_resolution_uses_path(alias: str, tmp_path: Path) -> None:
     code = _exe(tmp_path / "Code.exe")
-    index = AppIndexEngine(tmp_path / f"{alias.replace(' ', '_')}.json", which_lookup=lambda name: str(code) if name.lower() in {"code", "code.exe"} else None)
+    index = AppIndexEngine(tmp_path / f"{alias.replace(' ', '_')}.json", which_lookup=lambda name: str(code) if name.lower() in {"code", "code.exe"} else None, environment={}, start_menu_roots=[])
     resolved = index.resolve_app(alias)
     assert resolved is not None
     assert resolved.display_name == "VS Code"
@@ -122,7 +122,7 @@ def test_teams_alias_resolution_uses_known_location(alias: str, tmp_path: Path) 
 
 def test_path_and_known_location_resolution(tmp_path: Path) -> None:
     chrome = _exe(tmp_path / "path" / "chrome.exe")
-    path_index = AppIndexEngine(tmp_path / "path.json", which_lookup=lambda name: str(chrome) if name == "chrome" else None)
+    path_index = AppIndexEngine(tmp_path / "path.json", which_lookup=lambda name: str(chrome) if name == "chrome" else None, environment={}, start_menu_roots=[])
     assert Path(path_index.resolve_app("Chrome").path) == chrome.resolve()  # type: ignore[union-attr]
 
     local = tmp_path / "LocalAppData"
@@ -178,7 +178,7 @@ def test_missing_and_arbitrary_executable_are_blocked_without_launch(tmp_path: P
 def test_discovered_app_is_saved_only_after_mocked_launch(tmp_path: Path) -> None:
     launches: list[str] = []
     chrome = _exe(tmp_path / "chrome.exe")
-    index = AppIndexEngine(tmp_path / "apps.json", which_lookup=lambda name: str(chrome) if name == "chrome" else None)
+    index = AppIndexEngine(tmp_path / "apps.json", which_lookup=lambda name: str(chrome) if name == "chrome" else None, environment={}, start_menu_roots=[])
     actions = DesktopActionEngine(index, app_launcher=launches.append)
     result = actions.execute(ActionIntent("open_app", target="Chrome"))
     assert result.ok
