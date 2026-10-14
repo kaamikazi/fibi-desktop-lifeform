@@ -30,6 +30,14 @@ Complexity: medium.
 
 Exit: supported daily flows pass clean-machine and GUI integration tests.
 
+### Native assistant reliability pass (2026-08-15)
+
+The deterministic native-action path is now documented and hardened without
+adding a provider, database, or autonomous control system. Common application
+discovery, approved project file actions, explicit project notes, and
+supervised work-session starts reuse existing owners. See
+`docs/assistant/NATIVE_CAPABILITIES.md` and ADR 0013.
+
 ## Milestone 3: Trustworthy Memory
 
 Complexity: medium-high.

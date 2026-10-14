@@ -74,6 +74,11 @@ cover policy, byte-stable reads, runtime identity, and retrieval rules.
   allowlists, confirmation where required, and the action engine.
 - Model output cannot execute an effect directly.
 - Tests inject process, browser, clipboard, filesystem, audio, and clock effects.
+- Native effects return the compatible `DesktopActionResult` contract with
+  normalized status, permission state, and stable non-secret error codes.
+- App discovery is centralized; filesystem actions canonicalize approved roots,
+  reject symlink/junction/reparse chains, and bound project search to scanned
+  safe files. No action uses shell interpolation or unrestricted commands.
 
 ## Experimental Boundary
 

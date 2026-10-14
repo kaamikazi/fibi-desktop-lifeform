@@ -203,3 +203,21 @@ restore and Stage 3 import remain unavailable.
 8. Remove deprecated imports only after a documented compatibility window.
 
 No big-bang directory move is planned.
+
+## Native Assistant Actions
+
+Deterministic desktop work remains a narrow local capability, not a model tool:
+
+```text
+direct user text
+    -> ActionIntentDetector
+    -> PermissionEngine / confirmation
+    -> DesktopActionEngine
+    -> DesktopActionResult
+    -> Core response and Pet status
+```
+
+`AppIndexEngine` owns common Windows application discovery. Registered project
+search, notes, and supervised sessions reuse the existing project and session
+owners through injected callbacks. See
+`assistant/NATIVE_CAPABILITIES.md`, `architecture/BOUNDARIES.md`, and ADR 0013.
