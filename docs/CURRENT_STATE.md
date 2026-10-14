@@ -64,7 +64,47 @@ category and the optional RVC missing-backend diagnostic. The maintainer
 explicitly approved publication with those baseline failures documented.
 See [native validation](assistant/NATIVE_VALIDATION.md) for commands and scope.
 
+## Codex Cloud baseline (2026-10-14)
+
+The cloud run used Linux x86_64 and Python 3.12.14 in a project-local virtual
+environment. The backup category and RVC diagnostic failures are fixed with
+focused regression coverage. The backup suite passed 50 tests; voice tests
+passed 7; native action reliability passed 17; memory boundary checks passed
+16; provider architecture checks passed 16. The broader native regression
+batch passed 44 tests and failed only on the Linux project-workspace assertion
+described below. Compileall, native assistant smoke, synthetic backup
+rehearsal, boundary scanner, and offscreen GUI smoke also passed. The release
+verifier could not complete because this source clone has no packaged
+`dist/Fibi Chubi/Fibi Chubi.exe` release folder.
+
+To reproduce the supported setup in this Linux image, create `.venv` with
+Python 3.12, install the declared requirements with `/usr/bin/gcc` available
+for the `pocketsphinx` source build, then install pytest and run:
+
+```sh
+python3.12 -m venv .venv
+PIP_CACHE_DIR=/tmp/fibi-pip-cache CC=/usr/bin/gcc .venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip install pytest
+FIBI_DATA_DIR=/tmp/fibi-cloud-pytest-data .venv/bin/python -m pytest -q
+QT_QPA_PLATFORM=offscreen FIBI_DATA_DIR=/tmp/fibi-cloud-gui-data .venv/bin/python app.py --gui-smoke
+```
+
+Full pytest first reported 497 passed and two failures: the native project
+workspace test's Windows-backslash traversal assertion, and one occurrence of
+the v0.12 pending-confirmation assertion. Two later full-suite runs reported
+498 passed and only the project-workspace assertion. Instrumentation during a
+later full run showed confirmation state written with a 30-second expiry,
+preserved by the subsequent health-state write, and returned by
+`pending()`; it did not reproduce or identify the first occurrence's cause.
+The Linux project-workspace test constructs a Windows-style backslash path,
+which Linux treats as a filename. Keep both the unexplained v0.12 occurrence
+and Windows-platform test coverage visible until a Windows run and a diagnosed
+reproduction are available. This cloud run does not validate Windows packaging
+or hardware behavior.
+
 Protected wake-runtime and Control Center UI work remains local and outside
 this publication. Provider and memory service contracts are unchanged.
-Immediate work: resolve the two baseline failures, then continue runtime
-boundary reduction and clean-machine native-action validation.
+Immediate work: diagnose the isolated v0.12 confirmation failure, run the
+project-workspace traversal test and reparse-point coverage on Windows, then
+continue runtime boundary reduction and clean-machine native-action
+validation.

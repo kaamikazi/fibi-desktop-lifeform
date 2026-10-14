@@ -23,9 +23,9 @@ second source of architectural authority.
 - Clean-machine Windows validation is still needed for Start Menu shortcut
   target resolution, default-app opening, VS Code launch, and reparse-point
   behavior. Automated coverage uses injected effects and temporary roots.
-- The packaged release folder passes static verification, but its `--gui-smoke`
-  run exceeded the verifier's 30-second timeout in this environment; clean
-  packaged-runtime validation remains outstanding.
+- The cloud source clone did not include `dist/Fibi Chubi/Fibi Chubi.exe`, so
+  release verification and clean packaged-runtime validation remain
+  outstanding.
 - Action results now have stable status and error-code fields, but the journal
   still stores its existing summary string. A future migration can persist
   structured result metadata without changing the current journal owner.
@@ -39,9 +39,10 @@ second source of architectural authority.
   device-matrix validation before they become default capabilities.
 - GUI integration tests depend on installed PyQt6 and a display/offscreen Qt
   setup. Headless compile and pure engine tests remain available without Qt.
-- The current validation shell has no usable `pytest` installation and the
-  bundled interpreter lacks `google.genai`; full pytest and provider-dependent
-  Core smoke results therefore require the supported project environment.
+- Windows-only filesystem behavior, including native junction/reparse-point
+  handling and a project-workspace test built with Windows backslashes, still
+  needs a Windows run. Linux does not interpret those backslashes as path
+  separators.
 
 ## Release engineering
 
@@ -49,15 +50,22 @@ second source of architectural authority.
 - The repository has no license-selection decision; maintainers must choose one
   explicitly before distribution.
 
-## Confirmed baseline test failures (2026-10-14)
+## Cloud regression validation (2026-10-14)
 
-- `test_incomplete_bundle_and_symlink_artifact_are_rejected` expects
-  `unsafe_link_or_reparse_point`, but the backup verifier returns
-  `manifest_path_escape`. The unsafe bundle is rejected; error-category
-  precedence needs a separate backup review.
-- The v0.16 RVC smoke expects `last_rvc_error` to be populated by a missing
-  backend availability check. The current implementation returns unavailable
-  without populating that field. Resolve this in the optional voice subsystem.
+- Fixed backup artifact link classification before canonical path resolution.
+  Regression tests cover file links, linked ancestors, containment, ordinary
+  artifacts, and a hash spy that proves an outside target is not read.
+- Fixed unavailable RVC backend diagnostics and stale-error clearing, with
+  tests for missing interpreter/package, safe probe failure, and available
+  backend. Base voice fallback remains synthetic in tests.
+- The first full cloud pytest run reported 497 passed and two failed. The
+  v0.12 confirmation assertion passed in two subsequent full runs; instrumented
+  state writes showed the pending action persisted and remained unexpired, but
+  did not explain the first failure. Keep this occurrence unresolved until it
+  is diagnosed.
+- `test_v015_project_workspace` fails on Linux because it asserts that a
+  hardcoded Windows backslash path is traversal. It needs a Windows validation
+  run or a separately scoped cross-platform test correction.
 
-Both failures reproduced on the committed baseline and on the native-action
-publication snapshot. They were not hidden, skipped, or counted as passes.
+Full-suite evidence: first run 497 passed / 2 failed; later runs 498 passed /
+1 failed (the Linux/Windows-path mismatch). No failures were skipped or altered.
