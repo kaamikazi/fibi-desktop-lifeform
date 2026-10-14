@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import json
 import shutil
+import stat
+from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
 
 from fibi.memory_backup import verifier as verifier_module
+from fibi.memory_backup import safety as safety_module
 from fibi.memory_backup.verifier import BackupVerifier
 from tests.memory_backup_test_support import (
     create_backup,
@@ -40,6 +43,18 @@ def test_valid_manifest_is_deterministic_and_structurally_verified(valid_bundle:
     assert result.asset_count == 3
     assert result.required_verified_count == 1
     assert result.integrity == "passed"
+
+
+def test_ordinary_artifacts_remain_contained_and_valid(valid_bundle: Path) -> None:
+    manifest = read_manifest(valid_bundle)
+    relative = manifest["assets"][0]["artifact_path"]
+
+    resolved = safety_module.resolve_bundle_artifact(valid_bundle, relative)
+    result = BackupVerifier().verify(valid_bundle)
+
+    assert resolved == (valid_bundle / relative).resolve()
+    assert resolved.is_file()
+    assert result.valid is True
 
 
 @pytest.mark.parametrize(
@@ -130,7 +145,11 @@ def test_truncated_database_fails_integrity_even_with_matching_manifest_checksum
     assert result.errors[0].category in {"sqlite_unavailable_or_invalid", "sqlite_integrity_failed"}
 
 
-def test_incomplete_bundle_and_symlink_artifact_are_rejected(valid_bundle: Path, tmp_path: Path) -> None:
+def test_incomplete_bundle_and_symlink_artifact_are_rejected(
+    valid_bundle: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     incomplete = _copy_bundle(valid_bundle, tmp_path / "incomplete")
     (incomplete / "INCOMPLETE").write_text("incomplete", encoding="ascii")
     assert BackupVerifier().verify(incomplete).errors[0].category == "backup_incomplete"
@@ -138,11 +157,100 @@ def test_incomplete_bundle_and_symlink_artifact_are_rejected(valid_bundle: Path,
     link_bundle = _copy_bundle(valid_bundle, tmp_path / "link-bundle")
     artifact = link_bundle / "metadata" / "companion_state.json"
     artifact.unlink()
+    outside_artifact = valid_bundle / "metadata" / "companion_state.json"
     try:
-        artifact.symlink_to(valid_bundle / "metadata" / "companion_state.json")
+        artifact.symlink_to(outside_artifact)
     except OSError:
-        pytest.skip("symlink creation is unavailable on this Windows environment")
-    assert BackupVerifier().verify(link_bundle).errors[0].category == "unsafe_link_or_reparse_point"
+        pytest.skip("symlink creation is unavailable in this environment")
+
+    real_hash = verifier_module.sha256_file
+    hashed_paths: list[Path] = []
+
+    def hash_only_bundle_artifacts(path: Path) -> str:
+        candidate = Path(path).resolve()
+        assert candidate != outside_artifact.resolve()
+        hashed_paths.append(candidate)
+        return real_hash(path)
+
+    monkeypatch.setattr(verifier_module, "sha256_file", hash_only_bundle_artifacts)
+    result = BackupVerifier().verify(link_bundle)
+
+    assert result.errors[0].category == "unsafe_link_or_reparse_point"
+    assert outside_artifact.resolve() not in hashed_paths
+
+
+def test_linked_ancestor_directory_is_rejected_before_reading_target(
+    valid_bundle: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bundle = _copy_bundle(valid_bundle, tmp_path / "linked-ancestor")
+    outside_directory = tmp_path / "external-directory"
+    outside_directory.mkdir()
+    outside_artifact = outside_directory / "companion_state.json"
+    outside_artifact.write_text("synthetic external content", encoding="utf-8")
+    link = bundle / "metadata" / "linked"
+    try:
+        link.symlink_to(outside_directory, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlink creation is unavailable in this environment")
+
+    manifest = read_manifest(bundle)
+    companion = next(item for item in manifest["assets"] if item["logical_id"] == "memory_consent_state")
+    companion["artifact_path"] = "metadata/linked/companion_state.json"
+    write_manifest(bundle, manifest)
+
+    real_hash = verifier_module.sha256_file
+
+    def hash_only_bundle_artifacts(path: Path) -> str:
+        assert Path(path).resolve() != outside_artifact.resolve()
+        return real_hash(path)
+
+    monkeypatch.setattr(verifier_module, "sha256_file", hash_only_bundle_artifacts)
+    result = BackupVerifier().verify(bundle)
+
+    assert result.errors[0].category == "unsafe_link_or_reparse_point"
+
+
+def test_junction_artifact_is_rejected_with_platform_independent_mock(
+    valid_bundle: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact = valid_bundle / "metadata" / "companion_state.json"
+    monkeypatch.setattr(Path, "is_junction", lambda path: path == artifact, raising=False)
+
+    result = BackupVerifier().verify(valid_bundle)
+
+    assert result.errors[0].category == "unsafe_link_or_reparse_point"
+
+
+def test_windows_reparse_attribute_is_classified_as_link_like(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact = tmp_path / "reparse-artifact"
+    original_symlink = Path.is_symlink
+    original_lstat = Path.lstat
+    original_junction = getattr(Path, "is_junction", None)
+
+    def is_symlink(path: Path) -> bool:
+        return False if path == artifact else original_symlink(path)
+
+    def is_junction(path: Path) -> bool:
+        if path == artifact:
+            return False
+        return bool(original_junction and original_junction(path))
+
+    def lstat(path: Path):
+        if path == artifact:
+            return SimpleNamespace(st_mode=stat.S_IFREG, st_file_attributes=0x400)
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "is_symlink", is_symlink)
+    monkeypatch.setattr(Path, "is_junction", is_junction, raising=False)
+    monkeypatch.setattr(Path, "lstat", lstat)
+
+    assert safety_module.is_link_like(artifact) is True
 
 
 def test_manifest_and_verification_output_never_expose_private_payload(valid_bundle: Path) -> None:

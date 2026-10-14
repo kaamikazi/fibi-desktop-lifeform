@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import shutil
+import stat
 import time
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -22,7 +23,13 @@ def is_link_like(path: Path) -> bool:
         if path.is_symlink():
             return True
         is_junction = getattr(path, "is_junction", None)
-        return bool(callable(is_junction) and is_junction())
+        if callable(is_junction) and is_junction():
+            return True
+        reparse_attribute = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        attributes = getattr(path.lstat(), "st_file_attributes", 0)
+        return bool(attributes & reparse_attribute)
+    except FileNotFoundError:
+        return False
     except OSError:
         return True
 
@@ -51,7 +58,13 @@ def safe_relative_path(value: str) -> PurePosixPath:
 def resolve_bundle_artifact(bundle_root: Path, relative: str) -> Path:
     safe = safe_relative_path(relative)
     root = Path(bundle_root).resolve(strict=False)
-    candidate = root.joinpath(*safe.parts).resolve(strict=False)
+    candidate = root
+    for part in safe.parts:
+        candidate = candidate / part
+        if is_link_like(candidate):
+            raise BackupSafetyError("unsafe_link_or_reparse_point")
+
+    candidate = candidate.resolve(strict=False)
     if candidate == root or root not in candidate.parents:
         raise BackupSafetyError("manifest_path_escape")
     return candidate
