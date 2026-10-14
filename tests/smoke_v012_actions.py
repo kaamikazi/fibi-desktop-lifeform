@@ -30,6 +30,7 @@ from fibi.engines.permission_engine import PermissionEngine
 from fibi.engines.privacy_settings_engine import PrivacySettingsEngine
 from fibi.engines.project_workspace_engine import ProjectWorkspaceEngine
 from fibi.engines.types import ActionIntent, ModelResult, Observation
+from fibi.engines.warmup_engine import WarmupStatus
 
 
 class FakeObservation(ObservationEngine):
@@ -46,7 +47,32 @@ class NoModel(ModelEngine):
         return ModelResult("", "no-model", 0.0, "should not be called")
 
 
-def make_core(root: Path, opened: list[str], launched: list[str]) -> tuple[FibiCore, NoModel, AppIndexEngine]:
+class DeferredWarmup:
+    """Capture startup checks so tests can release them after an action is pending."""
+
+    def __init__(self) -> None:
+        self.status = WarmupStatus()
+        self.checks: list[tuple[str, object]] = []
+
+    def start(self, checks) -> None:
+        self.checks = list(checks)
+        self.status.running = True
+
+    def run_persistence_checks(self) -> None:
+        for name, check in self.checks:
+            if name == "tts_probe":
+                continue
+            check()
+        self.status.running = False
+        self.status.completed = True
+
+
+def make_core(
+    root: Path,
+    opened: list[str],
+    launched: list[str],
+    warmup=None,
+) -> tuple[FibiCore, NoModel, AppIndexEngine]:
     root.mkdir(parents=True, exist_ok=True)
     database = root / "fibi_memory.db"
     state = root / "fibi_state.json"
@@ -77,6 +103,7 @@ def make_core(root: Path, opened: list[str], launched: list[str]) -> tuple[FibiC
         action_journal=ActionJournalEngine(root / "action_journal.jsonl"),
         action_confirmations=ActionConfirmationEngine(state),
         project_workspace=ProjectWorkspaceEngine(root / "project_workspaces.json"),
+        warmup=warmup,
     )
     return core, model, app_index
 
@@ -120,7 +147,8 @@ def run() -> None:
         root = Path(temp)
         opened: list[str] = []
         launched: list[str] = []
-        core, model, app_index = make_core(root, opened, launched)
+        deferred_warmup = DeferredWarmup()
+        core, model, app_index = make_core(root, opened, launched, warmup=deferred_warmup)
 
         permission = PermissionEngine()
         settings = core.action_settings.settings
@@ -146,10 +174,32 @@ def run() -> None:
 
         pending = core.respond("shutdown pc")
         assert "say: confirm shutdown" in pending.display_text
+        saved_pending = json.loads((root / "fibi_state.json").read_text(encoding="utf-8")).get("pending_action")
+        assert core.action_confirmations.pending() is not None, f"saved pending action was {saved_pending!r}"
+        deferred_warmup.run_persistence_checks()
         assert core.action_confirmations.pending() is not None
         cancel = core.respond("/cancel action")
         assert "canceled" in cancel.display_text
         assert core.action_confirmations.pending() is None
+
+        # The confirmation is consumed once, while the destructive executor
+        # remains unreachable even after the user supplies the exact phrase.
+        executed_actions: list[str] = []
+        original_execute = core.desktop_actions.execute
+
+        def record_execute(intent):
+            executed_actions.append(intent.action_type)
+            return original_execute(intent)
+
+        core.desktop_actions.execute = record_execute
+        second_pending = core.respond("shutdown pc")
+        assert "say: confirm shutdown" in second_pending.display_text
+        confirmed = core.respond("confirm shutdown")
+        assert "destructive system power actions remain disabled" in confirmed.display_text
+        assert core.action_confirmations.pending() is None
+        assert executed_actions == []
+        assert core.action_confirmations.consume_if_confirmed("confirm shutdown") is None
+        assert executed_actions == []
 
         status = core.respond("/actions status")
         assert status.model_used == "local-command"
