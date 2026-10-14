@@ -8,7 +8,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import asdict
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from fibi.engines.context_engine import ContextEngine
 from fibi.engines.file_reader_engine import FileReaderEngine
@@ -188,11 +188,15 @@ class ProjectWorkspaceEngine:
         workspace = self.current()
         if workspace is None:
             return FileDropResult(False, message="no project nest.", error="none")
+        safe_relative = self._normalize_relative_file_path(relative_path)
+        if safe_relative is None:
+            return FileDropResult(False, message="nope. outside the project.", error="outside project")
+        relative_target, normalized_relative_path = safe_relative
         raw_root = Path(workspace.root_path)
         if self._contains_reparse_point(raw_root):
             return FileDropResult(False, message="nope. unsafe project link.", error="unsafe_link_or_reparse_point")
         root = raw_root.resolve()
-        candidate = root / relative_path
+        candidate = root / relative_target
         if self._contains_reparse_point(candidate):
             return FileDropResult(False, message="nope. unsafe project link.", error="unsafe_link_or_reparse_point")
         target = candidate.resolve()
@@ -200,7 +204,7 @@ class ProjectWorkspaceEngine:
             target.relative_to(root)
         except ValueError:
             return FileDropResult(False, message="nope. outside the project.", error="outside project")
-        entry = next((item for item in self.files() if item.relative_path == relative_path.replace("\\", "/")), None)
+        entry = next((item for item in self.files() if item.relative_path == normalized_relative_path), None)
         if entry and not entry.safe_to_read:
             if "secret" in entry.ignored_reason:
                 return FileDropResult(False, message="secret crumbs. not chewing those.", error=entry.ignored_reason)
@@ -209,6 +213,23 @@ class ProjectWorkspaceEngine:
         if result.ok and result.item:
             result.item.title = f"{workspace.name}/{result.item.title}"
         return result
+
+    @staticmethod
+    def _normalize_relative_file_path(value: str) -> tuple[Path, str] | None:
+        """Parse an untrusted file path with both Windows and POSIX rules."""
+
+        if not isinstance(value, str) or not value or "\x00" in value:
+            return None
+        windows_path = PureWindowsPath(value)
+        if windows_path.drive or windows_path.root:
+            return None
+        portable_path = PurePosixPath(value.replace("\\", "/"))
+        if portable_path.is_absolute() or not portable_path.parts:
+            return None
+        if any(part == ".." or ":" in part for part in portable_path.parts):
+            return None
+        parts = portable_path.parts
+        return Path(*parts), "/".join(parts)
 
     def summary(self) -> ProjectSummary | None:
         workspace = self.current()
