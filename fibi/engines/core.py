@@ -1378,7 +1378,6 @@ class FibiCore:
             [
                 ("memory_db", lambda: self.memory.retrieve("", limit=1)),
                 ("journal_db", lambda: self.journal.recent(limit=1)),
-                ("state_save", lambda: self.life.save_state()),
                 ("tts_probe", lambda: __import__("fibi.voice.speak").voice.speak.is_voice_available()),
             ]
         )

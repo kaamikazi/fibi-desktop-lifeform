@@ -51,18 +51,46 @@ class RvcVoiceSkinEngine:
         try:
             if settings.rvc_backend == "rvc_python":
                 if self._current_python_has_rvc():
+                    self._clear_backend_diagnostics()
                     return True
-                return self._venv_python_has_rvc()
+                if self._venv_python_has_rvc():
+                    self._clear_backend_diagnostics()
+                    return True
+                if not self.last_rvc_error:
+                    self._record_backend_error(
+                        "rvc_python is unavailable; install the optional package in .venv-rvc or choose another backend."
+                    )
+                return False
             if settings.rvc_backend == "rvc_webui_api":
                 import requests
 
                 response = requests.get(self._webui_url(settings), timeout=2)
-                return response.status_code < 500
-        except Exception as error:
-            self.last_rvc_error = repr(error)
-            self.last_fallback_reason = f"backend unavailable: {error}"
+                if response.status_code < 500:
+                    self._clear_backend_diagnostics()
+                    return True
+                self._record_backend_error(
+                    "The local RVC WebUI returned a server error; check that its API is running."
+                )
+                return False
+            self._record_backend_error(
+                "RVC backend is disabled; choose rvc_python or rvc_webui_api to enable the experiment."
+            )
             return False
-        return False
+        except Exception:
+            if settings.rvc_backend == "rvc_webui_api":
+                message = "The local RVC WebUI probe failed; check its URL and that its API is running."
+            else:
+                message = "The RVC Python probe failed; check the selected interpreter and optional package installation."
+            self._record_backend_error(message)
+            return False
+
+    def _clear_backend_diagnostics(self) -> None:
+        self.last_rvc_error = ""
+        self.last_fallback_reason = "none"
+
+    def _record_backend_error(self, message: str) -> None:
+        self.last_rvc_error = message
+        self.last_fallback_reason = message
 
     def status(self, settings: VoiceSkinSettings) -> dict[str, object]:
         """Return beginner-readable diagnostics for /voice skin status."""
@@ -297,6 +325,9 @@ class RvcVoiceSkinEngine:
     def _venv_python_has_rvc(self) -> bool:
         python_path = self._venv_python_path()
         if not python_path.exists():
+            self._record_backend_error(
+                "The configured .venv-rvc Python interpreter is missing; create that optional environment or choose another backend."
+            )
             return False
         completed = subprocess.run(
             [str(python_path), "-c", "import importlib.util; raise SystemExit(0 if importlib.util.find_spec('rvc_python') else 1)"],
@@ -307,8 +338,11 @@ class RvcVoiceSkinEngine:
             check=False,
         )
         if completed.returncode != 0:
-            self.last_rvc_error = (completed.stderr or completed.stdout or "rvc_python missing in .venv-rvc").strip()
-            self.last_fallback_reason = "rvc_python missing in .venv-rvc"
+            if completed.returncode == 1:
+                message = "rvc_python is missing from .venv-rvc; install the optional package or choose another backend."
+            else:
+                message = "The rvc_python package probe failed in .venv-rvc; repair that optional environment."
+            self._record_backend_error(message)
             return False
         return True
 

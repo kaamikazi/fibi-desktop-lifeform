@@ -6,6 +6,7 @@ import sys
 import tempfile
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -127,7 +128,10 @@ def run() -> None:
         assert "rvc_python" in backend.display_text
         enabled = core.respond("/voice skin on confirm")
         assert "voice skin ready" in enabled.display_text or "voice skin tripped" in enabled.display_text
-        test = core.respond("/voice skin test")
+        # Do not synthesize through Edge TTS or play audio in automated tests.
+        # The command's unavailable-voice branch still verifies safe fallback.
+        with patch("fibi.voice.speak.is_voice_available", return_value=False):
+            test = core.respond("/voice skin test")
         assert "voice" in test.display_text
         clear = core.respond("/voice cache clear")
         assert "voice cache cleared" in clear.display_text
